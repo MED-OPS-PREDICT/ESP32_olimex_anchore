@@ -1,24 +1,30 @@
-// components/webserver/webserver.cpp — ESP-IDF v5.3.x
-// Auth (login + SID cookie), Basic Auth fallback, DWM TLV GET diagnosztikával.
+// components/webserver/webserver.cpp
+// HTTP szerver + auth + /api/status + /api/config
+// BLE TLV GET route-ot a http_server.c adja (http_register_routes)
 
 #include <string>
 #include <vector>
 #include <cstring>
 #include <cstdio>
 #include <cinttypes>
+#include <cctype>          // isxdigit, tolower
+
 #include "esp_http_server.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "esp_system.h"
 #include "mbedtls/base64.h"
+
 #include "webserver.hpp"
-#include "globals.h"
-#include "ble.h"
+#include "globals.h"   // g_status, stb.
+
+extern "C" void ble_http_bridge_init(void);
+extern "C" void http_register_routes(httpd_handle_t h);
 
 static const char* TAG = "WEB";
 
 /* ================= HTTPD handle ================= */
-static httpd_handle_t s_http = NULL;
+static httpd_handle_t s_http = nullptr;
 
 /* ================= Users + Sessions ================= */
 struct User { const char* u; const char* p; user_role_t r; };
@@ -29,7 +35,7 @@ static const User kUsers[] = {
     {nullptr,nullptr,ROLE_NONE}
 };
 struct Session { char sid[33]; user_role_t role; uint32_t exp_s; };
-static Session g_sess[8]; // kevés is elég
+static Session g_sess[8];
 
 static void mk_sid(char out[33]){
     for(int i=0;i<32;i++){ uint8_t b = esp_random() & 0x0F; out[i] = "0123456789abcdef"[b]; }
@@ -91,6 +97,18 @@ static bool require_role(httpd_req_t* req, user_role_t need){
     return true;
 }
 
+/* ================= CORS helper + OPTIONS ================= */
+static void add_cors(httpd_req_t* r){
+    httpd_resp_set_hdr(r, "Access-Control-Allow-Origin", "*");
+    httpd_resp_set_hdr(r, "Access-Control-Allow-Headers", "content-type, authorization");
+    httpd_resp_set_hdr(r, "Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+}
+static esp_err_t options_ok(httpd_req_t* req){
+    add_cors(req);
+    httpd_resp_set_status(req, "204 No Content");
+    return httpd_resp_sendstr(req, "");
+}
+
 /* ================= Static file helper ================= */
 static esp_err_t send_file(httpd_req_t* req, const char* path, const char* ctype){
     FILE* f=fopen(path,"rb");
@@ -110,39 +128,98 @@ static esp_err_t ble_get  (httpd_req_t* r){ if(!require_role(r,ROLE_BLE ))return
 static esp_err_t admin_get(httpd_req_t* r){ if(!require_role(r,ROLE_ROOT))return ESP_FAIL; return send_file(r,"/spiffs/admin.html","text/html"); }
 static esp_err_t super_user_get(httpd_req_t* r){ if(!require_role(r,ROLE_BLE))return ESP_FAIL; return send_file(r,"/spiffs/super_user.html","text/html"); }
 
-/* ================= /auth/login =================
-   Body: {"user":"admin","pass":"admin"}
-   Siker: Set-Cookie: SID=...; Path=/; HttpOnly; Max-Age=86400
-*/
+/* ================= /auth/login ================= */
 static esp_err_t auth_login_post(httpd_req_t* req){
-    int len=req->content_len; if(len<=0) return httpd_resp_send_err(req,HTTPD_400_BAD_REQUEST,"empty");
-    std::vector<char> body(len+1,0); int off=0;
-    while(off<len){ int r=httpd_req_recv(req,body.data()+off,len-off); if(r<=0) return httpd_resp_send_err(req,HTTPD_500_INTERNAL_SERVER_ERROR,"recv"); off+=r; }
+    add_cors(req);
 
-    auto getstr=[&](const char* key)->std::string{
-        const char* k=strstr(body.data(),key); if(!k) return {};
-        k=strchr(k,':'); if(!k) return {}; k++;
-        while(*k==' '||*k=='\"') ++k;
-        const char* e=k; while(*e && *e!='\"' && *e!=',' && *e!='}') ++e;
-        return std::string(k,e-k);
+    int len = req->content_len;
+    if (len <= 0) return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "empty");
+
+    std::vector<char> body(len + 1, 0);
+    int off = 0;
+    while (off < len) {
+        int r = httpd_req_recv(req, body.data() + off, len - off);
+        if (r <= 0) return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "recv");
+        off += r;
+    }
+    ESP_LOGI(TAG, "login body: %s", body.data());
+
+    char ctype[64] = {0};
+    if (httpd_req_get_hdr_value_str(req, "Content-Type", ctype, sizeof(ctype)) != ESP_OK) ctype[0]=0;
+
+    auto trim = [](std::string s)->std::string{
+        size_t a = s.find_first_not_of(" \t\r\n\"");
+        size_t b = s.find_last_not_of(" \t\r\n\"");
+        if (a == std::string::npos) return std::string();
+        return s.substr(a, b - a + 1);
     };
-    std::string u=getstr("\"user\""); std::string p=getstr("\"pass\"");
-    user_role_t r=check_user(u.c_str(),p.c_str());
-    if(r==ROLE_NONE) return httpd_resp_send_err(req,HTTPD_401_UNAUTHORIZED,"bad creds");
 
-    // session mentés
+    std::string user, pass;
+
+    auto find_json = [&](const char* key)->std::string{
+        const char* k = strstr(body.data(), key);
+        if (!k) return {};
+        k = strchr(k, ':'); if (!k) return {}; ++k;
+        const char* p = k;
+        while (*p == ' ' || *p == '\t' || *p == '\"') ++p;
+        const char* q = p;
+        while (*q && *q != '\"' && *q != ',' && *q != '}') ++q;
+        return std::string(p, q - p);
+    };
+
+    auto url_decode = [](const char* s)->std::string{
+        std::string out;
+        for (; *s; ++s){
+            if (*s == '+') out.push_back(' ');
+            else if (*s == '%' && isxdigit((unsigned char)s[1]) && isxdigit((unsigned char)s[2])) {
+                int hi = isdigit((unsigned char)s[1]) ? s[1]-'0' : 10 + (tolower((unsigned char)s[1])-'a');
+                int lo = isdigit((unsigned char)s[2]) ? s[2]-'0' : 10 + (tolower((unsigned char)s[2])-'a');
+                out.push_back((char)((hi<<4)|lo)); s+=2;
+            } else out.push_back(*s);
+        }
+        return out;
+    };
+    auto get_form = [&](const char* key)->std::string{
+        std::string k = std::string(key) + "=";
+        const char* p = strstr(body.data(), k.c_str());
+        if (!p) return {};
+        p += k.size();
+        const char* q = p;
+        while (*q && *q != '&') ++q;
+        return url_decode(std::string(p, q - p).c_str());
+    };
+
+    std::string cts(ctype);
+    for (auto& ch : cts) ch = (char)tolower((unsigned char)ch);
+
+    if (cts.find("application/json") != std::string::npos || strchr(body.data(), '{')) {
+        user = trim(find_json("\"user\""));
+        pass = trim(find_json("\"pass\""));
+    } else {
+        user = trim(get_form("user"));
+        pass = trim(get_form("pass"));
+    }
+
+    if (user.empty() || pass.empty()) return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "bad format");
+
+    user_role_t r = check_user(user.c_str(), pass.c_str());
+    if (r == ROLE_NONE) return httpd_resp_send_err(req, HTTPD_401_UNAUTHORIZED, "bad creds");
+
     char sid[33]; mk_sid(sid);
-    uint32_t now=(uint32_t)(esp_timer_get_time()/1000000ULL);
-    // első szabad slot
-    int idx=0; for(int i=0;i<(int)(sizeof(g_sess)/sizeof(g_sess[0]));++i){ if(g_sess[i].sid[0]==0){ idx=i; break; } }
-    memset(&g_sess[idx],0,sizeof(g_sess[0]));
-    strncpy(g_sess[idx].sid,sid,sizeof(g_sess[0].sid)-1);
-    g_sess[idx].role=r; g_sess[idx].exp_s=now+86400;
+    uint32_t now = (uint32_t)(esp_timer_get_time()/1000000ULL);
+    int idx = -1;
+    for (int i = 0; i < (int)(sizeof(g_sess)/sizeof(g_sess[0])); ++i) if (g_sess[i].sid[0]==0){ idx=i; break; }
+    if (idx < 0) idx = 0;
+
+    memset(&g_sess[idx], 0, sizeof(g_sess[0]));
+    strncpy(g_sess[idx].sid, sid, sizeof(g_sess[0].sid)-1);
+    g_sess[idx].role = r;
+    g_sess[idx].exp_s = now + 86400;
 
     std::string cookie = std::string("SID=")+sid+"; Path=/; HttpOnly; Max-Age=86400";
-    httpd_resp_set_hdr(req,"Set-Cookie",cookie.c_str());
-    httpd_resp_set_type(req,"application/json");
-    return httpd_resp_sendstr(req,"{\"ok\":true}\n");
+    httpd_resp_set_hdr(req, "Set-Cookie", cookie.c_str());
+    httpd_resp_set_type(req, "application/json");
+    return httpd_resp_sendstr(req, "{\"ok\":true}\n");
 }
 
 /* ================= ESP config tükör az UI-hoz ================= */
@@ -231,102 +308,6 @@ static esp_err_t api_status_get(httpd_req_t* req){
     return httpd_resp_send(req,buf,n);
 }
 
-/* ================= BLE notify + TLV GET diagnosztika ================= */
-static volatile bool     s_ack_seen     = false;
-static uint64_t          s_last_tlv_us  = 0;
-static std::vector<uint8_t> s_bytes;
-struct Frame { bool from_cfg; uint16_t len; };
-static std::vector<Frame> s_frames;
-
-static inline uint16_t rd16be(const uint8_t* p){ return (uint16_t)p[0]<<8 | p[1]; }
-static inline uint32_t rd32be(const uint8_t* p){ return ((uint32_t)p[0]<<24)|((uint32_t)p[1]<<16)|((uint32_t)p[2]<<8)|p[3]; }
-
-static void on_ble_notify(const uint8_t* p, uint16_t n, bool from_cfg){
-    if(!p || n==0) return;
-    if(n==6 && p[0]==1 && p[1]==0x81){ s_ack_seen=true; return; }       // ACK
-    if(n>=2 && p[0]==1 && p[1]==0x90) return;                            // STATE → eldob
-    s_frames.push_back(Frame{from_cfg,n});
-    s_bytes.insert(s_bytes.end(),p,p+n);
-    s_last_tlv_us = esp_timer_get_time();
-    // napló rövid hexdump
-    char line[192]; int wp=0;
-    wp+=snprintf(line+wp,sizeof(line)-wp,"[%s] len=%u: ",from_cfg?"CFG":"DATA",(unsigned)n);
-    for (int i=0;i<n && wp<(int)sizeof(line)-3;i++) wp+=snprintf(line+wp,sizeof(line)-wp,"%02X ",p[i]);
-    ESP_LOGI(TAG,"%s",line);
-}
-
-static esp_err_t api_dwm_get(httpd_req_t* req){
-    if(!require_role(req, ROLE_BLE)) return ESP_FAIL;
-
-    s_ack_seen=false; s_last_tlv_us=0; s_bytes.clear(); s_frames.clear();
-    static uint16_t s_req=1; s_req++; (void)ble_send_get(s_req);
-
-    const uint64_t t0=esp_timer_get_time();
-    while(!s_ack_seen && (esp_timer_get_time()-t0)<800000ULL) vTaskDelay(pdMS_TO_TICKS(10));
-    const uint64_t t1=esp_timer_get_time();
-    for(;;){
-        uint64_t now=esp_timer_get_time();
-        if(s_last_tlv_us && (now-s_last_tlv_us)>200000ULL) break;
-        if((now-t1)>1500000ULL) break;
-        vTaskDelay(pdMS_TO_TICKS(20));
-    }
-
-    // TLV → JSON + RAW_HEX, FRAMES
-    char json[2048]; size_t wp=0; bool first=true;
-    auto add=[&](const char* k, const char* v){ wp+=snprintf(json+wp,sizeof(json)-wp,"%s\"%s\":%s",first?"":",",k,v); first=false; };
-    wp+=snprintf(json+wp,sizeof(json)-wp,"{");
-
-    size_t off=0, alen=s_bytes.size();
-    if(alen>=2 && s_bytes[0]==0x00){ uint8_t l=s_bytes[1]; if(alen>=2+l) off=2+l; } // VER skip
-
-    auto name_of=[](uint8_t t)->const char*{
-        switch(t){
-            case 0x10: return "NETWORK_ID"; case 0x11: return "ZONE_ID";
-            case 0x12: return "ANCHOR_ID";  case 0x13: return "TX_ANT_DLY";
-            case 0x14: return "RX_ANT_DLY"; case 0x16: return "BIAS_TICKS";
-            case 0x1F: return "LOG_LEVEL";  case 0x20: return "HB_MS";
-            case 0x40: return "PHY_CH";     case 0x49: return "PHY_SFDTO";
-            default:   return nullptr;
-        }
-    };
-
-    while(off+2<=alen){
-        uint8_t t=s_bytes[off], l=s_bytes[off+1]; off+=2;
-        if(off+l>alen) break;
-        const uint8_t* v=&s_bytes[off]; off+=l;
-        const char* nm=name_of(t); if(!nm) continue;
-        char vb[32];
-        if(l==1) snprintf(vb,sizeof(vb),"%u",(unsigned)v[0]);
-        else if(l==2) snprintf(vb,sizeof(vb),"%u",(unsigned)rd16be(v));
-        else if(l==4) snprintf(vb,sizeof(vb),"\"0x%08" PRIX32 "\"", rd32be(v));
-        else continue;
-        add(nm,vb);
-    }
-
-    // RAW_HEX
-    {
-        std::string hex; hex.reserve(alen*3);
-        for(size_t i=0;i<alen;i++){ char b[4]; snprintf(b,sizeof(b),"%02X ",s_bytes[i]); hex+=b; }
-        if(!hex.empty()) hex.pop_back();
-        char b[1024]; snprintf(b,sizeof(b),"\"%s\"",hex.c_str());
-        add("RAW_HEX",b);
-    }
-    // FRAMES
-    {
-        std::string fr="[";
-        for(size_t i=0;i<s_frames.size();i++){
-            char b[32]; snprintf(b,sizeof(b),"%s[\"%s\",%u]",i?",":"",s_frames[i].from_cfg?"CFG":"DATA",(unsigned)s_frames[i].len);
-            fr+=b;
-        }
-        fr+="]";
-        add("FRAMES",fr.c_str());
-    }
-
-    wp+=snprintf(json+wp,sizeof(json)-wp,"}\n");
-    httpd_resp_set_type(req,"application/json");
-    return httpd_resp_send(req,json,wp);
-}
-
 /* ================= Server start/stop ================= */
 esp_err_t webserver_start(){
     if (s_http) return ESP_OK;
@@ -334,12 +315,16 @@ esp_err_t webserver_start(){
     httpd_config_t cfg = HTTPD_DEFAULT_CONFIG();
     cfg.uri_match_fn = httpd_uri_match_wildcard;
     cfg.max_uri_handlers = 16;
+    cfg.stack_size = 8192;      // nagyobb stack
+
     ESP_ERROR_CHECK(httpd_start(&s_http, &cfg));
 
-    ble_register_notify_cb(on_ble_notify);
+    // BLE bridge
+    ble_http_bridge_init();
+    http_register_routes(s_http);
 
+    // Pages
     httpd_uri_t u{};
-
     u.method=HTTP_GET;
     u.uri="/login";            u.handler=login_get;        httpd_register_uri_handler(s_http,&u);
     u.uri="/diag";             u.handler=diag_get;         httpd_register_uri_handler(s_http,&u);
@@ -347,19 +332,21 @@ esp_err_t webserver_start(){
     u.uri="/admin";            u.handler=admin_get;        httpd_register_uri_handler(s_http,&u);
     u.uri="/super_user.html";  u.handler=super_user_get;   httpd_register_uri_handler(s_http,&u);
 
+    // API
     u.uri="/api/status";       u.handler=api_status_get;   httpd_register_uri_handler(s_http,&u);
 
-    httpd_uri_t dwm_get{};  dwm_get.method=HTTP_GET;  dwm_get.uri="/api/dwm_get";  dwm_get.handler=api_dwm_get;
-    httpd_register_uri_handler(s_http,&dwm_get);
-
-    httpd_uri_t get_cfg{};  get_cfg.method=HTTP_GET;  get_cfg.uri="/api/config";   get_cfg.handler=api_config_get;
+    httpd_uri_t get_cfg{};  get_cfg.method=HTTP_GET;    get_cfg.uri="/api/config";   get_cfg.handler=api_config_get;
     httpd_register_uri_handler(s_http,&get_cfg);
 
-    httpd_uri_t post_cfg{}; post_cfg.method=HTTP_POST; post_cfg.uri="/api/config"; post_cfg.handler=api_config_post;
+    httpd_uri_t post_cfg{}; post_cfg.method=HTTP_POST;  post_cfg.uri="/api/config";  post_cfg.handler=api_config_post;
     httpd_register_uri_handler(s_http,&post_cfg);
 
-    httpd_uri_t auth{};     auth.method=HTTP_POST;    auth.uri="/auth/login";     auth.handler=auth_login_post;
-    httpd_register_uri_handler(s_http,&auth);
+    // AUTH: POST + OPTIONS (preflight)
+    httpd_uri_t auth_post{}; auth_post.method=HTTP_POST;    auth_post.uri="/auth/login";    auth_post.handler=auth_login_post;
+    httpd_register_uri_handler(s_http,&auth_post);
+
+    httpd_uri_t auth_opt{};  auth_opt.method=HTTP_OPTIONS;  auth_opt.uri="/auth/login";     auth_opt.handler=options_ok;
+    httpd_register_uri_handler(s_http,&auth_opt);
 
     // Root és catch-all → login
     httpd_uri_t root{}; root.method=HTTP_GET; root.uri="/";  root.handler=login_get; httpd_register_uri_handler(s_http,&root);
@@ -370,5 +357,5 @@ esp_err_t webserver_start(){
 }
 esp_err_t webserver_stop(){
     if(!s_http) return ESP_OK;
-    httpd_stop(s_http); s_http=NULL; return ESP_OK;
+    httpd_stop(s_http); s_http=nullptr; return ESP_OK;
 }

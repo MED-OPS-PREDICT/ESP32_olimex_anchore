@@ -5,12 +5,13 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="d7727baf-cd08-430d-884d-b4e040b4a9ee" name="Changes" comment="a1">
-      <change afterPath="$PROJECT_DIR$/components/webserver/http_server.c" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/components/webserver/http_bridge.h" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/components/ble/ble.c" beforeDir="false" afterPath="$PROJECT_DIR$/components/ble/ble.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/components/ble/ble.h" beforeDir="false" afterPath="$PROJECT_DIR$/components/ble/ble.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/components/webserver/spiffs/super_user.html" beforeDir="false" afterPath="$PROJECT_DIR$/components/webserver/spiffs/super_user.html" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/webserver/CMakeLists.txt" beforeDir="false" afterPath="$PROJECT_DIR$/components/webserver/CMakeLists.txt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/webserver/http_server.c" beforeDir="false" afterPath="$PROJECT_DIR$/components/webserver/http_server.c" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/components/webserver/webserver.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/components/webserver/webserver.cpp" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/sdkconfig" beforeDir="false" afterPath="$PROJECT_DIR$/sdkconfig" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -129,7 +130,15 @@
       <option name="project" value="LOCAL" />
       <updated>1760885393100</updated>
     </task>
-    <option name="localTasksCounter" value="8" />
+    <task id="LOCAL-00008" summary="a1">
+      <option name="closed" value="true" />
+      <created>1761077743829</created>
+      <option name="number" value="00008" />
+      <option name="presentableId" value="LOCAL-00008" />
+      <option name="project" value="LOCAL" />
+      <updated>1761077743829</updated>
+    </task>
+    <option name="localTasksCounter" value="9" />
     <servers />
   </component>
   <component name="Vcs.Log.Tabs.Properties">
