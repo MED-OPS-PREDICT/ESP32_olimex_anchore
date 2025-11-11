@@ -1,6 +1,6 @@
 // components/webserver/webserver.cpp
 // HTTP szerver + auth + /api/status + /api/config
-// BLE TLV GET route-ot a http_server.c adja (http_register_routes)
+// A BLE TLV GET route-ot a http_server.c adja (http_register_routes)
 
 #include <string>
 #include <vector>
@@ -42,7 +42,7 @@ static void mk_sid(char out[33]){
     out[32] = 0;
 }
 static user_role_t check_user(const char* u, const char* pw){
-    for (auto& x: kUsers) if (x.u && strcmp(u,x.u)==0 && strcmp(pw,x.p)==0) return x.r;
+    for (const auto& x: kUsers) if (x.u && strcmp(u,x.u)==0 && strcmp(pw,x.p)==0) return x.r;
     return ROLE_NONE;
 }
 
@@ -97,11 +97,16 @@ static bool require_role(httpd_req_t* req, user_role_t need){
     return true;
 }
 
-/* ================= CORS helper + OPTIONS ================= */
+/* ================= CORS + cache control ================= */
 static void add_cors(httpd_req_t* r){
     httpd_resp_set_hdr(r, "Access-Control-Allow-Origin", "*");
     httpd_resp_set_hdr(r, "Access-Control-Allow-Headers", "content-type, authorization");
     httpd_resp_set_hdr(r, "Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+}
+static void add_no_cache(httpd_req_t* r){
+    httpd_resp_set_hdr(r, "Cache-Control", "no-store, no-cache, must-revalidate");
+    httpd_resp_set_hdr(r, "Pragma", "no-cache");
+    httpd_resp_set_hdr(r, "Expires", "0");
 }
 static esp_err_t options_ok(httpd_req_t* req){
     add_cors(req);
@@ -116,9 +121,9 @@ static esp_err_t send_file(httpd_req_t* req, const char* path, const char* ctype
     httpd_resp_set_type(req, ctype);
     char buf[1024]; size_t n;
     while((n=fread(buf,1,sizeof(buf),f))>0){
-        if(httpd_resp_send_chunk(req,buf,n)!=ESP_OK){ fclose(f); httpd_resp_sendstr_chunk(req,NULL); return ESP_FAIL; }
+        if(httpd_resp_send_chunk(req,buf,n)!=ESP_OK){ fclose(f); httpd_resp_sendstr_chunk(req,nullptr); return ESP_FAIL; }
     }
-    fclose(f); httpd_resp_sendstr_chunk(req,NULL); return ESP_OK;
+    fclose(f); httpd_resp_sendstr_chunk(req,nullptr); return ESP_OK;
 }
 
 /* ================= Pages ================= */
@@ -131,6 +136,7 @@ static esp_err_t super_user_get(httpd_req_t* r){ if(!require_role(r,ROLE_BLE))re
 /* ================= /auth/login ================= */
 static esp_err_t auth_login_post(httpd_req_t* req){
     add_cors(req);
+    add_no_cache(req);
 
     int len = req->content_len;
     if (len <= 0) return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "empty");
@@ -147,23 +153,22 @@ static esp_err_t auth_login_post(httpd_req_t* req){
     char ctype[64] = {0};
     if (httpd_req_get_hdr_value_str(req, "Content-Type", ctype, sizeof(ctype)) != ESP_OK) ctype[0]=0;
 
-    auto trim = [](std::string s)->std::string{
+    auto trim = [](std::string s) -> std::string {
         size_t a = s.find_first_not_of(" \t\r\n\"");
         size_t b = s.find_last_not_of(" \t\r\n\"");
-        if (a == std::string::npos) return std::string();
+        if (a == std::string::npos) {
+            return std::string();
+        }
         return s.substr(a, b - a + 1);
     };
 
     std::string user, pass;
 
     auto find_json = [&](const char* key)->std::string{
-        const char* k = strstr(body.data(), key);
-        if (!k) return {};
+        const char* k = strstr(body.data(), key); if (!k) return {};
         k = strchr(k, ':'); if (!k) return {}; ++k;
-        const char* p = k;
-        while (*p == ' ' || *p == '\t' || *p == '\"') ++p;
-        const char* q = p;
-        while (*q && *q != '\"' && *q != ',' && *q != '}') ++q;
+        const char* p = k; while (*p==' '||*p=='\t'||*p=='\"') ++p;
+        const char* q = p; while (*q && *q!='\"' && *q!=',' && *q!='}') ++q;
         return std::string(p, q - p);
     };
 
@@ -181,11 +186,8 @@ static esp_err_t auth_login_post(httpd_req_t* req){
     };
     auto get_form = [&](const char* key)->std::string{
         std::string k = std::string(key) + "=";
-        const char* p = strstr(body.data(), k.c_str());
-        if (!p) return {};
-        p += k.size();
-        const char* q = p;
-        while (*q && *q != '&') ++q;
+        const char* p = strstr(body.data(), k.c_str()); if (!p) return {};
+        p += k.size(); const char* q = p; while (*q && *q != '&') ++q;
         return url_decode(std::string(p, q - p).c_str());
     };
 
@@ -272,14 +274,17 @@ static bool parse_i32(const char* body, const char* key, int32_t& out){
 static bool parse_u16(const char* body, const char* key, uint16_t& out){ uint32_t t; if(!parse_u32(body,key,t)) return false; out=(uint16_t)t; return true; }
 static bool parse_u8 (const char* body, const char* key, uint8_t&  out){ uint32_t t; if(!parse_u32(body,key,t)) return false; out=(uint8_t)t;  return true; }
 
+/* ================= /api/config ================= */
 static esp_err_t api_config_get(httpd_req_t* req){
     if(!require_role(req, ROLE_BLE)) return ESP_FAIL;
+    add_cors(req); add_no_cache(req);
     char buf[256]; json_cfg_print(buf,sizeof(buf),g_cfg);
     httpd_resp_set_type(req,"application/json");
     return httpd_resp_send(req, buf, strlen(buf));
 }
 static esp_err_t api_config_post(httpd_req_t* req){
     if(!require_role(req, ROLE_BLE)) return ESP_FAIL;
+    add_cors(req); add_no_cache(req);
     int len=req->content_len; if(len<=0) return httpd_resp_send_err(req,HTTPD_400_BAD_REQUEST,"empty");
     std::vector<char> body(len+1,0); int off=0;
     while(off<len){ int r=httpd_req_recv(req,body.data()+off,len-off); if(r<=0) return httpd_resp_send_err(req,HTTPD_500_INTERNAL_SERVER_ERROR,"recv"); off+=r; }
@@ -299,6 +304,7 @@ static esp_err_t api_config_post(httpd_req_t* req){
 
 /* ================= /api/status ================= */
 static esp_err_t api_status_get(httpd_req_t* req){
+    add_cors(req); add_no_cache(req);
     const char* st = (g_status.state==ST_OK?"ok":g_status.state==ST_WARN?"warn":g_status.state==ST_ERR?"err":"off");
     char buf[128];
     int n=snprintf(buf,sizeof(buf),
@@ -314,14 +320,14 @@ esp_err_t webserver_start(){
 
     httpd_config_t cfg = HTTPD_DEFAULT_CONFIG();
     cfg.uri_match_fn = httpd_uri_match_wildcard;
-    cfg.max_uri_handlers = 16;
+    cfg.max_uri_handlers = 24;
     cfg.stack_size = 8192;      // nagyobb stack
 
     ESP_ERROR_CHECK(httpd_start(&s_http, &cfg));
 
     // BLE bridge
     ble_http_bridge_init();
-    http_register_routes(s_http);
+    http_register_routes(s_http);   // /api/dwm_get
 
     // Pages
     httpd_uri_t u{};
@@ -332,12 +338,12 @@ esp_err_t webserver_start(){
     u.uri="/admin";            u.handler=admin_get;        httpd_register_uri_handler(s_http,&u);
     u.uri="/super_user.html";  u.handler=super_user_get;   httpd_register_uri_handler(s_http,&u);
 
-    // API
+    // API GET-ek
     u.uri="/api/status";       u.handler=api_status_get;   httpd_register_uri_handler(s_http,&u);
-
     httpd_uri_t get_cfg{};  get_cfg.method=HTTP_GET;    get_cfg.uri="/api/config";   get_cfg.handler=api_config_get;
     httpd_register_uri_handler(s_http,&get_cfg);
 
+    // API POST-ok
     httpd_uri_t post_cfg{}; post_cfg.method=HTTP_POST;  post_cfg.uri="/api/config";  post_cfg.handler=api_config_post;
     httpd_register_uri_handler(s_http,&post_cfg);
 
@@ -345,8 +351,12 @@ esp_err_t webserver_start(){
     httpd_uri_t auth_post{}; auth_post.method=HTTP_POST;    auth_post.uri="/auth/login";    auth_post.handler=auth_login_post;
     httpd_register_uri_handler(s_http,&auth_post);
 
-    httpd_uri_t auth_opt{};  auth_opt.method=HTTP_OPTIONS;  auth_opt.uri="/auth/login";     auth_opt.handler=options_ok;
-    httpd_register_uri_handler(s_http,&auth_opt);
+    // Preflight OPTIONS minden érintett útvonalra
+    httpd_uri_t opt{};
+    opt.method=HTTP_OPTIONS;  opt.uri="/auth/login";   opt.handler=options_ok; httpd_register_uri_handler(s_http,&opt);
+    opt.uri="/api/config";    httpd_register_uri_handler(s_http,&opt);
+    opt.uri="/api/status";    httpd_register_uri_handler(s_http,&opt);
+    opt.uri="/api/dwm_get";   httpd_register_uri_handler(s_http,&opt);
 
     // Root és catch-all → login
     httpd_uri_t root{}; root.method=HTTP_GET; root.uri="/";  root.handler=login_get; httpd_register_uri_handler(s_http,&root);
@@ -355,6 +365,7 @@ esp_err_t webserver_start(){
     ESP_LOGI(TAG,"webserver started");
     return ESP_OK;
 }
+
 esp_err_t webserver_stop(){
     if(!s_http) return ESP_OK;
     httpd_stop(s_http); s_http=nullptr; return ESP_OK;

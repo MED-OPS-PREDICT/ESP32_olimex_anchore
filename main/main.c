@@ -36,12 +36,12 @@ static inline uint16_t rd16be(const uint8_t* v){ return ((uint16_t)v[0]<<8) | v[
 static inline uint32_t rd32be(const uint8_t* v){ return ((uint32_t)v[0]<<24)|((uint32_t)v[1]<<16)|((uint32_t)v[2]<<8)|v[3]; }
 
 /* ===== BLE NOTIFY parser ===== */
-static void parse_cfg_notify(const uint8_t* p, uint16_t n){
+static void __attribute__((unused)) parse_cfg_notify(const uint8_t* p, uint16_t n){
     const char* TAG="CFG";
     if (n==6 && p[0]==1 && p[1]==0x81){
         uint16_t req = rd16be(&p[2]);
-        uint8_t status=p[4], applied=p[5];
-        //ESP_LOGI(TAG, "ACK req=%u status=0x%02X applied=%u", (unsigned)req, status, (unsigned)applied);
+        uint8_t status = p[4], applied = p[5];
+        (void)req; (void)status; (void)applied;   // elnyomjuk a warningokat
         return;
     }
     if (n==17 && p[0]==1 && p[1]==0x90){
@@ -51,8 +51,7 @@ static void parse_cfg_notify(const uint8_t* p, uint16_t n){
         uint16_t netid = rd16be(&p[9]);
         uint16_t zone  = rd16be(&p[11]);
         uint32_t anc   = rd32be(&p[13]);
-        //ESP_LOGI(TAG,"STATE st=0x%02X sync_ms=%u up=%u net=%u zone=0x%04X anc=0x%08X",
-        //         st, sync, (unsigned)up, (unsigned)netid, (unsigned)zone, (unsigned)anc);
+        (void)st; (void)sync; (void)up; (void)netid; (void)zone; (void)anc;
         return;
     }
     // TLV stream: [t,l,val...] egymás után (HB vagy GET snapshot)

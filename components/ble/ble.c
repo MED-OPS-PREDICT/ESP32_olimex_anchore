@@ -20,6 +20,7 @@
 
 /* ====== Állapot ====== */
 static const char* TAG = "BLE_CLI";
+static uint16_t g_mtu = 23;
 
 static esp_gatt_if_t g_gattc_if = 0xFE;
 static uint16_t      g_conn_id  = 0xFFFF;
@@ -35,6 +36,10 @@ static ble_notify_cb_t g_cb = NULL;
 static char g_name_filter[32] = {0};
 static bool g_connecting = false;
 static bool s_verbose_tlv = false;   // állítsd true-ra, ha részletes TLV dump kell
+static bool s_log_progress  = false;
+
+#define LOGP_I(...)  do{ if(s_log_progress) ESP_LOGI(TAG, __VA_ARGS__); }while(0)
+#define LOGP_W(...)  do{ if(s_log_progress) ESP_LOGW(TAG, __VA_ARGS__); }while(0)
 
 /* ====== Protokoll opkódok ====== */
 #define OP_GET    0x02
@@ -107,8 +112,6 @@ static esp_ble_scan_params_t s_scan_params = {
 /* ---- SCAN/CONNECT sorosítás + védett hívások (elődeklaráció) ---- */
 static esp_err_t start_scan_safe(uint32_t dur_sec);
 static esp_err_t gattc_open_safe(esp_gatt_if_t ifx, const esp_bd_addr_t addr, esp_ble_addr_type_t type);
-/* >>> KELL: a wrapper prototípusa a használat ELÉ <<< */
-static void start_scan(void);
 
 /* ---- UUID-k ---- */
 static const uint8_t UWB_SVC_UUID_128[16]  = { 0xAB,0x90,0x78,0x56,0x34,0x12,0x34,0x12,0x78,0x56,0x34,0x12,0x78,0x56,0x34,0x12 };
@@ -202,7 +205,7 @@ static struct {
     struct kv_set cur, def; /* két „tükör” */
 } s_rx = {0};
 
-static void log_tlv_compact(uint8_t section, uint8_t t, const uint8_t* v, uint8_t l){
+static void __attribute__((unused)) log_tlv_compact(uint8_t section, uint8_t t, const uint8_t* v, uint8_t l){
     if (!s_verbose_tlv) return;
     const char* sec = (section==1) ? "CUR" : (section==2) ? "DEF" : "?";
     const char* nm  = tlv_name(t);
@@ -243,53 +246,45 @@ static inline void kv_store(struct kv_set* S, uint8_t t, const uint8_t* v, uint8
     memcpy(e->val, v, e->len);
 }
 
-static const char* tlv_name(uint8_t t);
+/* helper: 8/16/32 bites értékek egysoros kiírása – fájl-szint */
+static void print_kv(const char* key, const struct kv_entry* e){
+    if (!e || !e->present) { ESP_LOGI(TAG, "%s=?", key); return; }
+    if (e->len == 1) {
+        ESP_LOGI(TAG, "%s=%u", key, (unsigned)e->val[0]);
+    } else if (e->len == 2) {
+        ESP_LOGI(TAG, "%s=%u", key, (unsigned)rd16be(e->val));
+    } else if (e->len == 4) {
+        ESP_LOGI(TAG, "%s=%u", key, (unsigned)rd32be(e->val));
+    } else {
+        ESP_LOGI(TAG, "%s=LEN%u", key, (unsigned)e->len);
+    }
+}
 
 /* --- összefoglaló a felsőbb rétegnek --- */
 static void rx_emit_summary_to_cb(void){
-    if (!g_cb) return;
-
-    char buf[2048]; size_t wp=0;
-
-    const char* hdr1 = "# FULL CONFIG DUMP (CUR/DEF)\n";
-    size_t h1 = strlen(hdr1);
-    if (wp + h1 < sizeof(buf)) { memcpy(buf+wp,hdr1,h1); wp+=h1; }
-
-    for (size_t i=0;i<sizeof(s_expected_tags);++i){
+    // csak a végén, rendezett "name=value" sorok
+    for (size_t i = 0; i < sizeof(s_expected_tags); ++i) {
         uint8_t t = s_expected_tags[i];
         const char* name = tlv_name(t);
 
-        /* CURRENT */
-        const struct kv_entry* ce = &s_rx.cur.e[t];
-        int n = 0;
-        if (ce->present){
-            if (ce->len==1)      n = snprintf(buf+wp, sizeof(buf)-wp, "CUR.%s=%u\n", name, (unsigned)ce->val[0]);
-            else if (ce->len==2) n = snprintf(buf+wp, sizeof(buf)-wp, "CUR.%s=%u\n", name, (unsigned)rd16be(ce->val));
-            else if (ce->len==4) n = snprintf(buf+wp, sizeof(buf)-wp, "CUR.%s=%u\n", name, (unsigned)rd32be(ce->val));
-            else                  n = snprintf(buf+wp, sizeof(buf)-wp, "CUR.%s=LEN%d\n", name, (int)ce->len);
-        } else {
-            n = snprintf(buf+wp, sizeof(buf)-wp, "CUR.%s=?\n", name);
-        }
-        if (n > 0) { wp += (size_t)n; }
-        if (wp >= sizeof(buf)) break;
+        // CURRENT
+        print_kv(name, &s_rx.cur.e[t]);
 
-        /* DEFAULTS */
-        const struct kv_entry* de = &s_rx.def.e[t];
-        n = 0;
-        if (de->present){
-            if (de->len==1)      n = snprintf(buf+wp, sizeof(buf)-wp, "DEF.%s=%u\n", name, (unsigned)de->val[0]);
-            else if (de->len==2) n = snprintf(buf+wp, sizeof(buf)-wp, "DEF.%s=%u\n", name, (unsigned)rd16be(de->val));
-            else if (de->len==4) n = snprintf(buf+wp, sizeof(buf)-wp, "DEF.%s=%u\n", name, (unsigned)rd32be(de->val));
-            else                  n = snprintf(buf+wp, sizeof(buf)-wp, "DEF.%s=LEN%d\n", name, (int)de->len);
-        } else {
-            n = snprintf(buf+wp, sizeof(buf)-wp, "DEF.%s=?\n", name);
+        // DEFAULTS külön sorban, _DEF suffix
+        char def_name[48];
+        int n = snprintf(def_name, sizeof(def_name), "%s_DEF", name);
+        if (n > 0 && (size_t)n < sizeof(def_name)) {
+            print_kv(def_name, &s_rx.def.e[t]);
         }
-        if (n > 0) { wp += (size_t)n; }
-        if (wp >= sizeof(buf)) break;
     }
 
-    g_cb((const uint8_t*)buf, (uint16_t)((wp<UINT16_MAX)?wp:UINT16_MAX), true);
+    // jelzés a felső rétegnek
+    if (g_cb) {
+        const char done[] = "# CFG_DONE\n";
+        g_cb((const uint8_t*)done, (uint16_t)strlen(done), true);
+    }
 }
+
 
 static void handle_cfg_notify(const uint8_t* p, uint16_t n)
 {
@@ -313,7 +308,8 @@ static void handle_cfg_notify(const uint8_t* p, uint16_t n)
         s_rx.section = 0;
         s_rx.bitmap_len = (uint16_t)((total + 7u) >> 3);
         s_rx.bitmap = (uint8_t*)calloc(s_rx.bitmap_len ? s_rx.bitmap_len : 1, 1);
-        ESP_LOGI(TAG, "CFG START req=%u total=%u", req_id, total);
+        // ESP_LOGI(TAG, "CFG START req=%u total=%u", req_id, total);
+        LOGP_I("CFG START req=%u total=%u", req_id, total);
         return;
     }
 
@@ -356,9 +352,12 @@ static void handle_cfg_notify(const uint8_t* p, uint16_t n)
         esp_err_t er = send_ack(req_id, line_no, status);
         /* emberi, egy soros, kódnévvel */
         const char* st = (status==0) ? "OK" : (status==1) ? "TRUNC" : "OVERFLOW";
-        ESP_LOGI(TAG, "CFG ▷ LINE %u/%u %s, ack=%s(0x%x)",
+        /*ESP_LOGI(TAG, "CFG ▷ LINE %u/%u %s, ack=%s(0x%x)",
                  (unsigned)(line_no+1), (unsigned)s_rx.total, st,
-                 esp_err_to_name(er), er);
+                 esp_err_to_name(er), er);*/
+        LOGP_I("CFG LINE %u/%u %s, ack=%s(0x%x)",
+               (unsigned)(line_no+1), (unsigned)s_rx.total, st,
+               esp_err_to_name(er), er);
         return;
     }
 
@@ -375,7 +374,8 @@ static void handle_cfg_notify(const uint8_t* p, uint16_t n)
                 if (!bitset_get(i)) ESP_LOGW(TAG, "Hianyzo sor: #%u", i);
             }
         }
-        ESP_LOGI(TAG, "CFG DONE req=%u got=%u/%u", req_id, s_rx.got, s_rx.total);
+        // ESP_LOGI(TAG, "CFG DONE req=%u got=%u/%u", req_id, s_rx.got, s_rx.total);
+        LOGP_I("CFG DONE req=%u got=%u/%u", req_id, s_rx.got, s_rx.total);
 
         rx_emit_summary_to_cb();
         rx_reset();
@@ -399,12 +399,14 @@ static esp_err_t start_scan_safe(uint32_t dur_sec)
         return esp_ble_gap_set_scan_params(&s_scan_params);
     }
 
-    if (s_scan_active || s_scan_pending) {
+    if (s_scan_pending) {
         return ESP_ERR_INVALID_STATE;
     }
 
     if (s_scan_active) {
+        /* ha aktív, állítsd le, majd indítsd újra */
         esp_ble_gap_stop_scanning();
+        /* lehet rövid delay szükséges, de ezt a platform függ */
     }
 
     esp_err_t er = esp_ble_gap_start_scanning(dur_sec);
@@ -480,7 +482,7 @@ static void gap_cb(esp_gap_ble_cb_event_t e, esp_ble_gap_cb_param_t* p)
     case ESP_GAP_BLE_SCAN_RESULT_EVT: {
         const esp_ble_gap_cb_param_t* sr = p;
         if (sr->scan_rst.search_evt == ESP_GAP_SEARCH_INQ_RES_EVT) {
-            if (!g_connecting && adv_name_match(sr->scan_rst.ble_adv, sr->scan_rst.adv_data_len, g_name_filter)) {
+            if (!g_connecting && g_gattc_if != 0xFE && adv_name_match(sr->scan_rst.ble_adv, sr->scan_rst.adv_data_len, g_name_filter)) {
                 memcpy(g_peer_bda, p->scan_rst.bda, 6);
                 g_peer_addr_type = p->scan_rst.ble_addr_type;
                 gattc_open_safe(g_gattc_if, g_peer_bda, g_peer_addr_type);
@@ -537,7 +539,10 @@ static void gattc_cb(esp_gattc_cb_event_t e, esp_gatt_if_t gattc_if, esp_ble_gat
         break;
 
     case ESP_GATTC_CFG_MTU_EVT:
-        ESP_LOGI(TAG, "ATT_MTU=%u", p->cfg_mtu.mtu);
+        if (p->cfg_mtu.mtu > 0) {
+            g_mtu = p->cfg_mtu.mtu;
+        }
+        ESP_LOGI(TAG, "ATT_MTU=%u", g_mtu);
         break;
 
     case ESP_GATTC_SEARCH_RES_EVT:
@@ -648,6 +653,15 @@ static void gattc_cb(esp_gattc_cb_event_t e, esp_gatt_if_t gattc_if, esp_ble_gat
         break;
 
     case ESP_GATTC_CLOSE_EVT:
+        ESP_LOGW(TAG, "gattc closed; status=0x%x", p->close.status);
+        g_connected = false;
+        g_connecting = false;
+        rx_reset();
+        reset_gatt_state();
+        vTaskDelay(pdMS_TO_TICKS(100));
+        start_scan_safe(0);
+        break;
+
     case ESP_GATTC_DISCONNECT_EVT:
         ESP_LOGW(TAG, "disconnected; reason=0x%x", p->disconnect.reason);
         g_connected = false;
@@ -663,7 +677,10 @@ static void gattc_cb(esp_gattc_cb_event_t e, esp_gatt_if_t gattc_if, esp_ble_gat
 }
 
 /* ====== SET/GET küldők ====== */
-static inline uint16_t max_write_payload(void){ return 240; /* MTU 247 - 7 */ }
+static inline uint16_t max_write_payload(void){
+    return (g_mtu > 7) ? (g_mtu - 7) : 0; /* ATT header 3 + ATT op + egyebek -> egyszerű kalkul */
+}
+
 
 esp_err_t ble_send_get(uint16_t req_id)
 {

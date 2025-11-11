@@ -18,16 +18,19 @@
   .btn{appearance:none;border:0;border-radius:12px;padding:9px 12px;background:linear-gradient(180deg,var(--acc),#57b6ff);color:#00203a;font-weight:700;cursor:pointer}
   .btn.ghost{background:transparent;color:var(--txt);border:1px solid rgba(255,255,255,.18)}
   table{width:100%;border-collapse:collapse}
-  th,td{padding:8px 10px;border-top:1px solid rgba(255,255,255,.06)}
+  th,td{padding:8px 10px;border-top:1px solid rgba(255,255,255,.06);vertical-align:middle}
   th{color:var(--muted);text-align:left}
   .pill{display:inline-block;padding:2px 7px;border-radius:999px;font-size:11px}
   .ok{background:rgba(25,195,125,.2);color:#9ce7c9}
+  .warn{background:rgba(255,176,32,.2);color:#ffd79b}
   .err{background:rgba(255,93,93,.18);color:#ffc3c3}
   .mono{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px}
   .muted{color:var(--muted)}
   .inp{width:100%;padding:8px 10px;border-radius:10px;border:1px solid rgba(255,255,255,.12);background:var(--panel2);color:var(--txt)}
+  .inp[disabled]{opacity:.6}
   #log{white-space:pre-wrap;max-height:40vh;overflow:auto}
   #warn{display:none;background:#3b2a00;color:#ffd48a;border:1px solid #7a5400;padding:8px 10px;border-radius:10px;margin:10px 0}
+  .sec-title{margin:12px 0 6px 0;color:var(--muted);font-weight:600}
 </style>
 </head>
 <body>
@@ -67,10 +70,18 @@
       </div>
     </div>
     <div class="bd">
-      <table id="tblEdit">
-        <thead><tr><th>Kulcs</th><th>ESP</th><th>DWM</th><th>Új érték</th></tr></thead>
-        <tbody></tbody>
-      </table>
+      <div class="sec-title">Alap:</div>
+      <table id="tblBase"><thead><tr><th>Kulcs</th><th>ESP</th><th>DWM</th><th>Új érték</th></tr></thead><tbody></tbody></table>
+
+      <div class="sec-title">Szinkron:</div>
+      <table id="tblSync"><thead><tr><th>Kulcs</th><th>ESP</th><th>DWM</th><th>Új érték</th></tr></thead><tbody></tbody></table>
+
+      <div class="sec-title">PHY:</div>
+      <table id="tblPhy"><thead><tr><th>Kulcs</th><th>ESP</th><th>DWM</th><th>Új érték</th></tr></thead><tbody></tbody></table>
+
+      <div class="sec-title">Állapot:</div>
+      <table id="tblStat"><thead><tr><th>Kulcs</th><th>Érték</th></tr></thead><tbody></tbody></table>
+
       <div class="muted" style="margin-top:6px">Üres mező nem küldődik.</div>
     </div>
   </section>
@@ -96,7 +107,7 @@ function setPill(ok,txt){ const p=$('statusPill'); if(!p) return; p.textContent=
 
 /* ===== Secure Context ellenőrzés ===== */
 (function(){
-  const secure = (location.protocol==='https:' || location.hostname==='localhost');
+  const secure = (location.protocol==='https:' || location.hostname==='localhost' || location.hostname==='127.0.0.1');
   if(!secure){
     const w=$('warn'); w.style.display='block';
     w.textContent='Web Bluetooth csak HTTPS-en vagy localhost-on működik. Jelenleg: '+location.protocol+'//'+location.host;
@@ -109,35 +120,84 @@ function setPill(ok,txt){ const p=$('statusPill'); if(!p) return; p.textContent=
   }
 })();
 
-/* ===== UUID ===== */
-const UUID={ svc:()=>$('svcUuid').value.trim().toLowerCase(), cfg:()=>$('cfgUuid').value.trim().toLowerCase(), data:()=>$('dataUuid').value.trim().toLowerCase() };
+/* ===== renderdef ===== */
+const GROUPS = {
+  base: [
+    {k:'NETWORK_ID', edit:true},
+    {k:'ZONE_ID',    edit:true},
+    {k:'ANCHOR_ID',  edit:true},
+    {k:'HB_MS',      edit:true},
+    {k:'LOG_LEVEL',  edit:true},
+    {k:'TX_ANT_DLY', edit:true},
+    {k:'RX_ANT_DLY', edit:true},
+    {k:'BIAS_TICKS', edit:true},
+  ],
+  sync: [
+    {k:'SYN_PPM_MAX',     edit:true},
+    {k:'SYN_JUMP_PPM',    edit:true},
+    {k:'SYN_AB_GAP_MS',   edit:true},
+    {k:'SYN_MS_EWMA_DEN', edit:true},
+    {k:'SYN_TK_EWMA_DEN', edit:true},
+    {k:'SYN_TK_MIN_MS',   edit:true},
+    {k:'SYN_TK_MAX_MS',   edit:true},
+    {k:'SYN_DTTX_MIN_MS', edit:true},
+    {k:'SYN_DTTX_MAX_MS', edit:true},
+    {k:'SYN_LOCK_NEED',   edit:true}
+  ],
+  phy: [
+    {k:'PHY_CH',       edit:true},
+    {k:'PHY_PLEN',     edit:true},
+    {k:'PHY_PAC',      edit:true},
+    {k:'PHY_TX_CODE',  edit:true},
+    {k:'PHY_RX_CODE',  edit:true},
+    {k:'PHY_SFD',      edit:true},
+    {k:'PHY_BR',       edit:true},
+    {k:'PHY_PHRMODE',  edit:true},
+    {k:'PHY_PHRRATE',  edit:true},
+    {k:'PHY_SFDTO',    edit:true},
+    {k:'PHY_STS_MODE', edit:true},
+    {k:'PHY_STS_LEN',  edit:true},
+    {k:'PHY_PDOA',     edit:true}
+  ],
+  stat: [
+    {k:'STATUS'}, {k:'UPTIME_MS'}, {k:'SYNC_MS'}
+  ]
+};
 
-/* ===== TLV ===== */
-const T={VER:0x00,STATUS:0x01,UPTIME_MS:0x02,SYNC_MS:0x03,
-  NETWORK_ID:0x10,ZONE_ID:0x11,ANCHOR_ID:0x12,TX_ANT_DLY:0x13,RX_ANT_DLY:0x14,BIAS_TICKS:0x16,LOG_LEVEL:0x1F,HB_MS:0x20,
-  SYN_PPM_MAX:0x30,SYN_JUMP_PPM:0x31,SYN_AB_GAP_MS:0x32,SYN_MS_EWMA_DEN:0x33,SYN_TK_EWMA_DEN:0x34,SYN_TK_MIN_MS:0x35,SYN_TK_MAX_MS:0x36,SYN_DTTX_MIN_MS:0x37,SYN_DTTX_MAX_MS:0x38,SYN_LOCK_NEED:0x39,
-  PHY_CH:0x40,PHY_PLEN:0x41,PHY_PAC:0x42,PHY_TX_CODE:0x43,PHY_RX_CODE:0x44,PHY_SFD:0x45,PHY_BR:0x46,PHY_PHRMODE:0x47,PHY_PHRRATE:0x48,PHY_SFDTO:0x49,PHY_STS_MODE:0x4A,PHY_STS_LEN:0x4B,PHY_PDOA:0x4C};
-const NAME=Object.fromEntries(Object.entries(T).map(([k,v])=>[v,k]));
+function cell(v){ return `<td class="mono">${v===undefined||v===null?'-':v}</td>`; }
+
+function renderGroup(tblId, items, withInputs){
+  const tb = qs(`#${tblId} tbody`);
+  if(!tb){ logln('[UI] hiányzó tábla: '+tblId); return; }
+  tb.innerHTML = items.map(it=>{
+    const key = it.k;
+    const esp = (g.esp && g.esp[key]!==undefined)? g.esp[key] : '-';
+    const dwm = (g.dwm && g.dwm[key]!==undefined)? g.dwm[key] : '-';
+    const input = withInputs && it.edit
+      ? `<input class="inp" id="in_${key}" placeholder="új érték">`
+      : `<input class="inp" id="in_${key}" placeholder="nem írható" disabled>`;
+    return `<tr><td>${key}</td>${cell(esp)}${cell(dwm)}<td>${input}</td></tr>`;
+  }).join('');
+}
+
+function renderStat(){
+  const tb = qs('#tblStat tbody');
+  if(!tb){ logln('[UI] hiányzó tábla: stat'); return; }
+  tb.innerHTML = GROUPS.stat.map(it=>{
+    const v = (g.dwm && g.dwm[it.k]!==undefined)? g.dwm[it.k] : '-';
+    return `<tr><td>${it.k}</td>${cell(v)}</tr>`;
+  }).join('');
+}
+
+function renderAll(){
+  renderGroup('tblBase', GROUPS.base, true);
+  renderGroup('tblSync', GROUPS.sync, true);
+  renderGroup('tblPhy',  GROUPS.phy,  true);
+  renderStat();
+}
 
 /* ===== állapot ===== */
 let g={dev:null,server:null,svc:null,cfg:null,data:null,esp:{},dwm:{}};
-
-/* ===== táblázat ===== */
-const EDIT_FIELDS=[
-  ['NETWORK_ID',T.NETWORK_ID],['ZONE_ID',T.ZONE_ID],['ANCHOR_ID',T.ANCHOR_ID],
-  ['HB_MS',T.HB_MS],['LOG_LEVEL',T.LOG_LEVEL],
-  ['TX_ANT_DLY',T.TX_ANT_DLY],['RX_ANT_DLY',T.RX_ANT_DLY],['BIAS_TICKS',T.BIAS_TICKS],
-  ['PHY_CH',T.PHY_CH],['PHY_SFDTO',T.PHY_SFDTO]
-];
-function renderEdit(){
-  const tb = qs('#tblEdit tbody');
-  if(!tb){ logln('[UI] #tblEdit tbody nem található'); return; }
-  tb.innerHTML = EDIT_FIELDS.map(([label])=>{
-    const esp=(g.esp&&g.esp[label]) ?? '-';
-    const dwm=(g.dwm&&g.dwm[label]) ?? '-';
-    return `<tr><td>${label}</td><td class="mono">${esp}</td><td class="mono">${dwm}</td><td><input class="inp" id="in_${label}" placeholder="új érték"></td></tr>`;
-  }).join('');
-}
 
 /* ===== ESP GET (HTTP) ===== */
 async function doEspGet(){
@@ -148,61 +208,12 @@ async function doEspGet(){
     if(!r.ok) r=await fetch('/api/esp_config',{cache:'no-store',headers:hdr});
     if(!r.ok) throw new Error('HTTP '+r.status);
     g.esp=await r.json();
-    renderEdit();
+    renderAll();
     logln('[ESP] kész');
   }catch(e){ logln('[ESP] hiba: '+e.message); }
 }
 
-/* ===== egyszerű event bus ===== */
-const listeners={ack:[], tlv:[]};
-function once(type, fn, timeoutMs, onTimeout){
-  let done=false;
-  const wrap=(...args)=>{ if(done) return; done=true; off(type,wrap); try{fn(...args);}catch(e){logln('[once-fn] '+e);} };
-  on(type, wrap);
-  const t=setTimeout(()=>{ if(done) return; done=true; off(type,wrap); onTimeout&&onTimeout(); }, timeoutMs);
-  return ()=>{ if(done) return; done=true; off(type,wrap); clearTimeout(t); };
-}
-function on(type, fn){ listeners[type].push(fn); }
-function off(type, fn){ const a=listeners[type]; const i=a.indexOf(fn); if(i>=0) a.splice(i,1); }
-
-/* ===== DWM notify feldolgozás ===== */
-function rd32(dv,off){return (dv.getUint8(off)<<24)|(dv.getUint8(off+1)<<16)|(dv.getUint8(off+2)<<8)|dv.getUint8(off+3);}
-function onCfgNotify(ev){
-  const a=new Uint8Array(ev.target.value.buffer, ev.target.value.byteOffset, ev.target.value.byteLength);
-  logln('[DWM] notify len='+a.length+' ['+Array.from(a).map(x=>x.toString(16).padStart(2,'0')).join(' ')+']');
-  if(a.length===6 && a[0]===1 && a[1]===0x81){
-    const req=(a[2]<<8)|a[3];
-    $('ack').textContent=`req=${req} status=0x${a[4].toString(16)} applied=${a[5]}`;
-    listeners.ack.forEach(f=>{ try{f({req,status:a[4],applied:a[5]});}catch(e){logln('[ack-h] '+e);} });
-    return;
-  }
-  if(a.length===17 && a[0]===1 && a[1]===0x90) return; // STATE
-  if(a.length>=3){
-    let off=0, first=true, res={};
-    while(off+2<=a.length){
-      const t=a[off], l=a[off+1]; off+=2;
-      if(off+l>a.length) break;
-      const dv=new DataView(a.buffer,a.byteOffset+off,l); off+=l;
-      if(first&&t===T.VER){ first=false; continue; }
-      let v;
-      if(l===1) v=dv.getUint8(0);
-      else if(l===2) v=(dv.getUint8(0)<<8)|dv.getUint8(1);
-      else if(l===4) v='0x'+rd32(dv,0).toString(16).padStart(8,'0');
-      else v=`len=${l}`;
-      res[NAME[t]||('T_'+t)]=v;
-    }
-    listeners.tlv.forEach(f=>{ try{f(res);}catch(e){logln('[tlv-h] '+e);} });
-    g.dwm={...g.dwm,...res}; renderEdit();
-  }
-}
-
-/* ===== BLE csatlakozás ===== */
-function connect(){ logln('[BLE] kikapcsolva'); setPill(false,'Nincs kapcsolat'); }
-
-/* ===== DWM GET: BLE elsődleges, HTTP fallback ===== */
-function beReq(req){ return new Uint8Array([1,0x02,(req>>8)&255,req&255,0]); }
-function nextReq(){ const n=(Number($('reqId').value)||1)+1; $('reqId').value=String(n); return n; }
-
+/* ===== BLE helyett HTTP DWM GET ===== */
 async function doDwmGet(){
   logln('[UI] LEKÉR DWM (HTTP)');
   try{
@@ -210,10 +221,8 @@ async function doDwmGet(){
     const r = await fetch('/api/dwm_get', { cache:'no-store', headers: hdr });
     if(!r.ok) throw new Error('HTTP '+r.status);
     const j = await r.json();
-
-    // j kulcsai pontosan egyezzenek az EDIT_FIELDS neveivel
-    g.dwm = j;
-    renderEdit();
+    g.dwm = j || {};
+    renderAll();
     logln('[DWM] kész (HTTP): '+JSON.stringify(j));
   }catch(e){
     logln('[DWM] hiba (HTTP): '+e);
@@ -223,35 +232,15 @@ async function doDwmGet(){
 /* ===== SET mindkettőnek ===== */
 function gatherInputs(){
   const out={};
-  for(const [label] of EDIT_FIELDS){
-    const el=$('in_'+label);
-    if(el&&el.value.trim()!=='') out[label]=el.value.trim();
+  const every = [...GROUPS.base, ...GROUPS.sync, ...GROUPS.phy];
+  for(const it of every){
+    const el = $('in_'+it.k);
+    if(!el || el.disabled) continue;
+    const v = el.value.trim();
+    if(v!=='') out[it.k]=v;
   }
   return out;
 }
-function hexToU32(s){ s=String(s).trim(); if(s.startsWith('0x')||s.startsWith('0X')) return parseInt(s,16)>>>0; return (parseInt(s,10)>>>0); }
-function hexToU16(s){ s=String(s).trim(); if(s.startsWith('0x')||s.startsWith('0X')) return parseInt(s,16)&0xffff; return (parseInt(s,10)&0xffff); }
-function be16(x){return new Uint8Array([(x>>8)&255,x&255]);}
-function be32(x){return new Uint8Array([(x>>>24)&255,(x>>>16)&255,(x>>>8)&255,x&255]);}
-function pushTLV(arr,t,bytes){ arr.push(t, bytes.length, ...bytes); }
-
-function buildSetTLV(inp){
-  const tlv=[]; const num=v=>Number(v);
-  if(inp.NETWORK_ID) pushTLV(tlv,T.NETWORK_ID,be16(num(inp.NETWORK_ID)&0xffff));
-  if(inp.ZONE_ID){ const v=hexToU16(inp.ZONE_ID); pushTLV(tlv,T.ZONE_ID,be16(v)); }
-  if(inp.ANCHOR_ID){ const v=hexToU32(inp.ANCHOR_ID); pushTLV(tlv,T.ANCHOR_ID,be32(v)); }
-  if(inp.HB_MS) pushTLV(tlv,T.HB_MS,be16(Math.max(200,num(inp.HB_MS)&0xffff)));
-  if(inp.LOG_LEVEL) pushTLV(tlv,T.LOG_LEVEL,new Uint8Array([num(inp.LOG_LEVEL)&0xff]));
-  if(inp.TX_ANT_DLY) pushTLV(tlv,T.TX_ANT_DLY,be32(num(inp.TX_ANT_DLY)|0));
-  if(inp.RX_ANT_DLY) pushTLV(tlv,T.RX_ANT_DLY,be32(num(inp.RX_ANT_DLY)|0));
-  if(inp.BIAS_TICKS) pushTLV(tlv,T.BIAS_TICKS,be32(num(inp.BIAS_TICKS)|0));
-  if(inp.PHY_CH) pushTLV(tlv,T.PHY_CH,new Uint8Array([num(inp.PHY_CH)&0xff]));
-  if(inp.PHY_SFDTO) pushTLV(tlv,T.PHY_SFDTO,be16(num(inp.PHY_SFDTO)&0xffff));
-  const req=(Number($('reqId').value)||1)+1; $('reqId').value=String(req);
-  const hdr=new Uint8Array([1,0x01,(req>>8)&255,req&255,0]); /* ver=1, cmd=SET */
-  return new Uint8Array([...hdr,...tlv]);
-}
-
 async function doSetBoth(){
   const inp=gatherInputs();
   if(Object.keys(inp).length===0){ logln('[SET] nincs módosítás'); return; }
@@ -260,16 +249,15 @@ async function doSetBoth(){
     const hdr={'Content-Type':'application/json','Authorization':'Basic '+btoa('admin:admin')};
     let r=await fetch('/api/config',{method:'POST',headers:hdr,body:JSON.stringify(inp)});
     if(!r.ok) r=await fetch('/api/esp_config',{method:'POST',headers:hdr,body:JSON.stringify(inp)});
+    if(!r.ok) throw new Error('HTTP '+r.status);
     logln('[ESP] SET elküldve');
   }catch(e){ logln('[ESP] SET hiba: '+e.message); }
 
-  try{
-    if(!g.cfg){ logln('[DWM] SET kihagyva: nincs BLE kapcsolat'); return; }
-    const pkt=buildSetTLV(inp);
-    try{ await g.cfg.writeValueWithResponse(pkt); logln('[DWM] SET elküldve (WRITE)'); }
-    catch(e1){ logln('[DWM] WRITE hiba, NR: '+e1); await g.cfg.writeValueWithoutResponse(pkt); logln('[DWM] SET elküldve (WRITE_NR)'); }
-  }catch(e){ logln('[DWM] SET hiba: '+e); }
+  // DWM SET itt nem BLE-n megy. Ha lesz HTTP endpoint, ide illeszd.
 }
+
+/* ===== BLE csatlakozás (jelenleg nincs használva) ===== */
+function connect(){ logln('[BLE] kikapcsolva'); setPill(false,'Nincs kapcsolat'); }
 
 /* ===== Web Serial ===== */
 let serialReader=null;
@@ -299,7 +287,7 @@ $('btnEspGet').addEventListener('click', doEspGet);
 $('btnApply').addEventListener('click', doSetBoth);
 $('btnOpenSerial').addEventListener('click', openSerial);
 
-renderEdit();
+renderAll();
 </script>
 </body>
 </html>
