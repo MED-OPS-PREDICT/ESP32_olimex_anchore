@@ -427,7 +427,20 @@ static esp_err_t gattc_open_safe(esp_gatt_if_t ifx, const esp_bd_addr_t addr, es
 }
 
 /* publikus cb-regisztráció */
-void ble_register_notify_cb(ble_notify_cb_t cb){ g_cb = cb; }
+static ble_notify_cb_t g_cb1 = NULL;
+static ble_notify_cb_t g_cb2 = NULL;
+
+void ble_register_notify_cb(ble_notify_cb_t cb){
+    // első hívás -> cb1, második -> cb2
+    if (!g_cb1) {
+        g_cb1 = cb;
+        ESP_LOGI("BLE_CLI", "notify_cb1 set to %p", (void*)cb);
+    } else {
+        g_cb2 = cb;
+        ESP_LOGI("BLE_CLI", "notify_cb2 set to %p", (void*)cb);
+    }
+}
+
 
 /* ====== GATTC ====== */
 static void gattc_cb(esp_gattc_cb_event_t e, esp_gatt_if_t gattc_if, esp_ble_gattc_cb_param_t* p);
@@ -640,7 +653,8 @@ static void gattc_cb(esp_gattc_cb_event_t e, esp_gatt_if_t gattc_if, esp_ble_gat
     case ESP_GATTC_NOTIFY_EVT: {
         bool from_cfg = (p->notify.handle == g_cfg_h);
         if (from_cfg) handle_cfg_notify(p->notify.value, p->notify.value_len);
-        if (g_cb) g_cb(p->notify.value, p->notify.value_len, from_cfg);
+        if (g_cb1) g_cb1(p->notify.value, p->notify.value_len, from_cfg);
+        if (g_cb2) g_cb2(p->notify.value, p->notify.value_len, from_cfg);
         break;
     }
 

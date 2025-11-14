@@ -5,32 +5,183 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Super User – UWB Anchor</title>
 <style>
-  :root{--bg:#0b1522;--panel:#0e1d2b;--panel2:#0a1825;--muted:#9fb0c7;--txt:#e9f1fb;--acc:#2da8ff;--ok:#19c37d;--warn:#ffb020;--err:#ff5d5d}
-  *{box-sizing:border-box}
-  body{margin:0;min-height:100vh;background:linear-gradient(180deg,#091321,#0b1522);color:var(--txt);font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,Ubuntu,sans-serif}
-  header{padding:14px 18px;border-bottom:1px solid rgba(255,255,255,.06);display:flex;gap:12px;align-items:center}
-  h1{margin:0;font-size:16px}
-  .wrap{padding:16px;display:grid;gap:14px}
-  .grid{display:grid;gap:14px}
-  .card{background:color-mix(in srgb,var(--panel) 92%,#000 8%);border:1px solid rgba(255,255,255,.08);border-radius:16px;box-shadow:0 10px 34px rgba(0,0,0,.35)}
-  .card .hd{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border-bottom:1px solid rgba(255,255,255,.06)}
-  .card .bd{padding:12px}
-  .btn{appearance:none;border:0;border-radius:12px;padding:9px 12px;background:linear-gradient(180deg,var(--acc),#57b6ff);color:#00203a;font-weight:700;cursor:pointer}
-  .btn.ghost{background:transparent;color:var(--txt);border:1px solid rgba(255,255,255,.18)}
-  table{width:100%;border-collapse:collapse}
-  th,td{padding:8px 10px;border-top:1px solid rgba(255,255,255,.06);vertical-align:middle}
-  th{color:var(--muted);text-align:left}
-  .pill{display:inline-block;padding:2px 7px;border-radius:999px;font-size:11px}
-  .ok{background:rgba(25,195,125,.2);color:#9ce7c9}
-  .warn{background:rgba(255,176,32,.2);color:#ffd79b}
-  .err{background:rgba(255,93,93,.18);color:#ffc3c3}
-  .mono{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px}
-  .muted{color:var(--muted)}
-  .inp{width:100%;padding:8px 10px;border-radius:10px;border:1px solid rgba(255,255,255,.12);background:var(--panel2);color:var(--txt)}
-  .inp[disabled]{opacity:.6}
-  #log{white-space:pre-wrap;max-height:40vh;overflow:auto}
-  #warn{display:none;background:#3b2a00;color:#ffd48a;border:1px solid #7a5400;padding:8px 10px;border-radius:10px;margin:10px 0}
-  .sec-title{margin:12px 0 6px 0;color:var(--muted);font-weight:600}
+  :root{
+    --bg:#0b1522;
+    --panel:#0e1d2b;
+    --panel2:#0a1825;
+    --muted:#9fb0c7;
+    --txt:#e9f1fb;
+    --acc:#2da8ff;
+    --ok:#19c37d;
+    --warn:#ffb020;
+    --err:#ff5d5d;
+  }
+  *{box-sizing:border-box;}
+
+  body{
+    margin:0;
+    min-height:100vh;
+    background:linear-gradient(180deg,#091321,#0b1522);
+    color:var(--txt);
+    font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,Ubuntu,sans-serif;
+  }
+
+  header{
+    padding:14px 18px;
+    border-bottom:1px solid rgba(255,255,255,.06);
+    display:flex;
+    gap:12px;
+    align-items:center;
+    justify-content:space-between;
+  }
+  h1{margin:0;font-size:16px;}
+
+  .wrap{
+    padding:16px;
+    display:grid;
+    gap:14px;
+    max-width:1440px;         /* FHD-ra optimalizált, 4K-nál középre zárt */
+    margin:0 auto;
+  }
+
+  .card{
+    background:color-mix(in srgb,var(--panel) 92%,#000 8%);
+    border:1px solid rgba(255,255,255,.08);
+    border-radius:16px;
+    box-shadow:0 10px 34px rgba(0,0,0,.35);
+  }
+  .card .hd{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding:10px 14px;
+    border-bottom:1px solid rgba(255,255,255,.06);
+    gap:8px;
+  }
+  .card .bd{padding:12px 14px 14px;}
+
+  .btn{
+    appearance:none;
+    border:0;
+    border-radius:12px;
+    padding:8px 12px;
+    background:linear-gradient(180deg,var(--acc),#57b6ff);
+    color:#00203a;
+    font-weight:700;
+    cursor:pointer;
+    font-size:13px;
+    white-space:nowrap;
+  }
+  .btn.ghost{
+    background:transparent;
+    color:var(--txt);
+    border:1px solid rgba(255,255,255,.18);
+  }
+  .btn:disabled{opacity:.6;cursor:default;}
+
+  .toolbar{
+    display:flex;
+    flex-wrap:wrap;
+    gap:8px;
+    align-items:center;
+    justify-content:flex-end;
+  }
+
+  .form-grid{
+    display:grid;
+    grid-template-columns:160px minmax(0,1fr);
+    gap:6px 10px;
+  }
+
+  .pill{
+    display:inline-block;
+    padding:2px 7px;
+    border-radius:999px;
+    font-size:11px;
+  }
+  .ok{background:rgba(25,195,125,.2);color:#9ce7c9;}
+  .warn{background:rgba(255,176,32,.2);color:#ffd79b;}
+  .err{background:rgba(255,93,93,.18);color:#ffc3c3;}
+
+  .mono{
+    font-family:ui-monospace,Menlo,Consolas,monospace;
+    font-size:12px;
+  }
+  .muted{color:var(--muted);}
+
+  .inp{
+    width:100%;
+    padding:7px 9px;
+    border-radius:10px;
+    border:1px solid rgba(255,255,255,.12);
+    background:var(--panel2);
+    color:var(--txt);
+    font-size:13px;
+  }
+  .inp[disabled]{opacity:.6;}
+
+  .sec-title{
+    margin:10px 0 4px;
+    color:var(--muted);
+    font-weight:600;
+    font-size:13px;
+  }
+
+  .table-wrap{
+    width:100%;
+    overflow-x:auto;           /* kisebb képernyőn vízszintes scroll, nem esik szét */
+  }
+
+  table{
+    width:100%;
+    border-collapse:collapse;
+    table-layout:fixed;
+    font-size:13px;
+  }
+  th,td{
+    padding:6px 8px;
+    border-top:1px solid rgba(255,255,255,.06);
+    vertical-align:middle;
+  }
+  th{
+    color:var(--muted);
+    text-align:left;
+    font-weight:600;
+  }
+
+  .cfg-table col.col-key   { width:220px; }   /* fix oszlopszélességek */
+  .cfg-table col.col-esp   { width:90px;  }
+  .cfg-table col.col-dwm   { width:90px;  }
+  .cfg-table col.col-new   { width:auto;  }
+
+  .cfg-table td:nth-child(2),
+  .cfg-table td:nth-child(3){
+    text-align:right;          /* ESP / DWM számok jobbra igazítva */
+  }
+
+  #log{
+    white-space: pre-wrap;
+    height: 220px;      /* fix magasság */
+    max-height: 220px;  /* ne nőjön tovább */
+    overflow: auto;     /* görgetés, ha több a tartalom */
+  }
+
+  #warn{
+    display:none;
+    background:#3b2a00;
+    color:#ffd48a;
+    border:1px solid #7a5400;
+    padding:8px 10px;
+    border-radius:10px;
+    margin:10px 0;
+  }
+
+  @media (max-width: 900px){
+    .wrap{padding:10px;}
+    header{flex-direction:column;align-items:flex-start;gap:6px;}
+    .form-grid{grid-template-columns:120px minmax(0,1fr);}
+    .cfg-table col.col-key{width:170px;}
+  }
 </style>
 </head>
 <body>
@@ -39,31 +190,44 @@
   <div class="muted">ESP lekér • DWM lekér • Beállít mindkettő • Soros log</div>
 </header>
 
-<div class="wrap grid">
+<div class="wrap">
   <div id="warn" class="mono"></div>
 
   <section class="card">
-    <div class="hd"><div>DWM kapcsolat</div><div id="statusPill" class="pill err">Nincs kapcsolat</div></div>
+    <div class="hd">
+      <div>DWM kapcsolat</div>
+      <div id="statusPill" class="pill err">Nincs kapcsolat</div>
+    </div>
     <div class="bd">
-      <div class="grid" style="grid-template-columns:160px 1fr;gap:6px 8px">
-        <label>Szolgáltatás UUID</label><input class="inp" id="svcUuid" value="12345678-1234-5678-1234-1234567890ab">
-        <label>CFG karakterisztika</label><input class="inp" id="cfgUuid" value="abcdef02-1234-5678-1234-1234567890ab">
-        <label>DATA karakterisztika</label><input class="inp" id="dataUuid" value="abcdef01-1234-5678-1234-1234567890ab">
-        <label>Req ID</label><input class="inp mono" id="reqId" value="1">
+      <div class="form-grid">
+        <label>Szolgáltatás UUID</label>
+        <input class="inp" id="svcUuid" value="12345678-1234-5678-1234-1234567890ab">
+
+        <label>CFG karakterisztika</label>
+        <input class="inp" id="cfgUuid" value="abcdef02-1234-5678-1234-1234567890ab">
+
+        <label>DATA karakterisztika</label>
+        <input class="inp" id="dataUuid" value="abcdef01-1234-5678-1234-1234567890ab">
+
+        <label>Req ID</label>
+        <input class="inp mono" id="reqId" value="1">
+
         <div></div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <div class="toolbar">
           <button class="btn" id="btnConnect">Csatlakozás</button>
           <button class="btn ghost" id="btnOpenSerial">Soros megnyitása</button>
         </div>
-        <label>ACK</label><div id="ack" class="mono muted">-</div>
+
+        <label>ACK</label>
+        <div id="ack" class="mono muted">-</div>
       </div>
     </div>
   </section>
 
-  <section class="card" style="grid-column:1/-1">
+  <section class="card">
     <div class="hd">
       <div>Konfiguráció</div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <div class="toolbar">
         <button class="btn ghost" id="btnEspGet">LEKÉR ESP</button>
         <button class="btn ghost" id="btnDwmGet">LEKÉR DWM</button>
         <button class="btn" id="btnApply">Beállít (ESP + DWM)</button>
@@ -71,23 +235,62 @@
     </div>
     <div class="bd">
       <div class="sec-title">Alap:</div>
-      <table id="tblBase"><thead><tr><th>Kulcs</th><th>ESP</th><th>DWM</th><th>Új érték</th></tr></thead><tbody></tbody></table>
+      <div class="table-wrap">
+        <table id="tblBase" class="cfg-table">
+          <colgroup>
+            <col class="col-key">
+            <col class="col-esp">
+            <col class="col-dwm">
+            <col class="col-new">
+          </colgroup>
+          <thead>
+            <tr><th>Kulcs</th><th>ESP</th><th>DWM</th><th>Új érték</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
 
       <div class="sec-title">Szinkron:</div>
-      <table id="tblSync"><thead><tr><th>Kulcs</th><th>ESP</th><th>DWM</th><th>Új érték</th></tr></thead><tbody></tbody></table>
+      <div class="table-wrap">
+        <table id="tblSync" class="cfg-table">
+          <colgroup>
+            <col class="col-key">
+            <col class="col-esp">
+            <col class="col-dwm">
+            <col class="col-new">
+          </colgroup>
+          <thead>
+            <tr><th>Kulcs</th><th>ESP</th><th>DWM</th><th>Új érték</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
 
       <div class="sec-title">PHY:</div>
-      <table id="tblPhy"><thead><tr><th>Kulcs</th><th>ESP</th><th>DWM</th><th>Új érték</th></tr></thead><tbody></tbody></table>
-
-      <div class="sec-title">Állapot:</div>
-      <table id="tblStat"><thead><tr><th>Kulcs</th><th>Érték</th></tr></thead><tbody></tbody></table>
+      <div class="table-wrap">
+        <table id="tblPhy" class="cfg-table">
+          <colgroup>
+            <col class="col-key">
+            <col class="col-esp">
+            <col class="col-dwm">
+            <col class="col-new">
+          </colgroup>
+          <thead>
+            <tr><th>Kulcs</th><th>ESP</th><th>DWM</th><th>Új érték</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
 
       <div class="muted" style="margin-top:6px">Üres mező nem küldődik.</div>
     </div>
   </section>
 
-  <section class="card" style="grid-column:1/-1">
-    <div class="hd"><div>Log</div><div class="muted">Soros és böngésző</div></div>
+  <section class="card">
+    <div class="hd">
+      <div>Log</div>
+      <div class="muted">Soros és böngésző</div>
+    </div>
     <div class="bd mono" id="log"></div>
   </section>
 </div>
@@ -98,24 +301,47 @@ window.addEventListener('error', e => { logln('[JS-ERROR] '+(e.message||e)); });
 window.addEventListener('unhandledrejection', e => { logln('[JS-PROMISE] '+(e.reason||e)); });
 
 /* ===== util + soros írható log ===== */
-const $ = id => document.getElementById(id);
-const qs = s => document.querySelector(s);
+const $  = id => document.getElementById(id);
+const qs = s  => document.querySelector(s);
 let serialWriter = null;
-function slog(s){ if(serialWriter){ try{ serialWriter.write(s+'\n'); }catch(_){} } }
-function logln(s){ const L=$('log'); if(L){ L.textContent+=s+'\n'; L.scrollTop=L.scrollHeight; } console.log(s); slog(s); }
-function setPill(ok,txt){ const p=$('statusPill'); if(!p) return; p.textContent=txt||(ok?'Csatlakozva':'Nincs kapcsolat'); p.className='pill '+(ok?'ok':'err'); }
+
+function slog(s){
+  if(serialWriter){
+    try{ serialWriter.write(s+'\n'); }catch(_){}
+  }
+}
+function logln(s){
+  const L = $('log');
+  if(L){
+    L.textContent += s + '\n';
+    L.scrollTop   = L.scrollHeight;
+  }
+  console.log(s);
+  slog(s);
+}
+function setPill(ok, txt){
+  const p = $('statusPill');
+  if(!p) return;
+  p.textContent = txt || (ok ? 'Csatlakozva' : 'Nincs kapcsolat');
+  p.className   = 'pill ' + (ok ? 'ok' : 'err');
+}
 
 /* ===== Secure Context ellenőrzés ===== */
 (function(){
-  const secure = (location.protocol==='https:' || location.hostname==='localhost' || location.hostname==='127.0.0.1');
+  const secure = (location.protocol === 'https:' ||
+                  location.hostname === 'localhost' ||
+                  location.hostname === '127.0.0.1');
   if(!secure){
-    const w=$('warn'); w.style.display='block';
-    w.textContent='Web Bluetooth csak HTTPS-en vagy localhost-on működik. Jelenleg: '+location.protocol+'//'+location.host;
+    const w = $('warn');
+    w.style.display = 'block';
+    w.textContent   = 'Web Bluetooth csak HTTPS-en vagy localhost-on működik. Jelenleg: ' +
+                      location.protocol + '//' + location.host;
     logln('[BLE] Secure Context szükséges (HTTPS vagy localhost)');
   }
   if(!('bluetooth' in navigator)){
-    const w=$('warn'); w.style.display='block';
-    w.textContent += ' | A böngésző nem támogatja a Web Bluetooth API-t.';
+    const w = $('warn');
+    w.style.display = 'block';
+    w.textContent  += ' | A böngésző nem támogatja a Web Bluetooth API-t.';
     logln('[BLE] navigator.bluetooth nem elérhető');
   }
 })();
@@ -133,16 +359,16 @@ const GROUPS = {
     {k:'BIAS_TICKS', edit:true},
   ],
   sync: [
-    {k:'SYN_PPM_MAX',     edit:true},
-    {k:'SYN_JUMP_PPM',    edit:true},
-    {k:'SYN_AB_GAP_MS',   edit:true},
-    {k:'SYN_MS_EWMA_DEN', edit:true},
-    {k:'SYN_TK_EWMA_DEN', edit:true},
-    {k:'SYN_TK_MIN_MS',   edit:true},
-    {k:'SYN_TK_MAX_MS',   edit:true},
-    {k:'SYN_DTTX_MIN_MS', edit:true},
-    {k:'SYN_DTTX_MAX_MS', edit:true},
-    {k:'SYN_LOCK_NEED',   edit:true}
+    {k:'PPM_MAX',     edit:true},
+    {k:'JUMP_PPM',    edit:true},
+    {k:'AB_GAP_MS',   edit:true},
+    {k:'MS_EWMA_DEN', edit:true},
+    {k:'TK_EWMA_DEN', edit:true},
+    {k:'TK_MIN_MS',   edit:true},
+    {k:'TK_MAX_MS',   edit:true},
+    {k:'DTTX_MIN_MS', edit:true},
+    {k:'DTTX_MAX_MS', edit:true},
+    {k:'LOCK_NEED',   edit:true}
   ],
   phy: [
     {k:'PHY_CH',       edit:true},
@@ -158,21 +384,23 @@ const GROUPS = {
     {k:'PHY_STS_MODE', edit:true},
     {k:'PHY_STS_LEN',  edit:true},
     {k:'PHY_PDOA',     edit:true}
-  ],
-  stat: [
-    {k:'STATUS'}, {k:'UPTIME_MS'}, {k:'SYNC_MS'}
   ]
 };
 
-function cell(v){ return `<td class="mono">${v===undefined||v===null?'-':v}</td>`; }
+function cell(v){
+  return `<td class="mono">${v===undefined||v===null?'-':v}</td>`;
+}
 
 function renderGroup(tblId, items, withInputs){
   const tb = qs(`#${tblId} tbody`);
-  if(!tb){ logln('[UI] hiányzó tábla: '+tblId); return; }
-  tb.innerHTML = items.map(it=>{
+  if(!tb){
+    logln('[UI] hiányzó tábla: '+tblId);
+    return;
+  }
+  tb.innerHTML = items.map(it =>{
     const key = it.k;
-    const esp = (g.esp && g.esp[key]!==undefined)? g.esp[key] : '-';
-    const dwm = (g.dwm && g.dwm[key]!==undefined)? g.dwm[key] : '-';
+    const esp = (g.esp && g.esp[key] !== undefined) ? g.esp[key] : '-';
+    const dwm = (g.dwm && g.dwm[key] !== undefined) ? g.dwm[key] : '-';
     const input = withInputs && it.edit
       ? `<input class="inp" id="in_${key}" placeholder="új érték">`
       : `<input class="inp" id="in_${key}" placeholder="nem írható" disabled>`;
@@ -180,45 +408,43 @@ function renderGroup(tblId, items, withInputs){
   }).join('');
 }
 
-function renderStat(){
-  const tb = qs('#tblStat tbody');
-  if(!tb){ logln('[UI] hiányzó tábla: stat'); return; }
-  tb.innerHTML = GROUPS.stat.map(it=>{
-    const v = (g.dwm && g.dwm[it.k]!==undefined)? g.dwm[it.k] : '-';
-    return `<tr><td>${it.k}</td>${cell(v)}</tr>`;
-  }).join('');
-}
-
 function renderAll(){
   renderGroup('tblBase', GROUPS.base, true);
   renderGroup('tblSync', GROUPS.sync, true);
   renderGroup('tblPhy',  GROUPS.phy,  true);
-  renderStat();
 }
 
 /* ===== állapot ===== */
-let g={dev:null,server:null,svc:null,cfg:null,data:null,esp:{},dwm:{}};
+let g = { dev:null, server:null, svc:null, cfg:null, data:null, esp:{}, dwm:{} };
 
 /* ===== ESP GET (HTTP) ===== */
 async function doEspGet(){
   logln('[ESP] lekérés indul');
   try{
-    const hdr={ 'Accept':'application/json','Authorization':'Basic '+btoa('admin:admin') };
-    let r=await fetch('/api/config',{cache:'no-store',headers:hdr});
-    if(!r.ok) r=await fetch('/api/esp_config',{cache:'no-store',headers:hdr});
+    const hdr = {
+      'Accept':'application/json',
+      'Authorization':'Basic '+btoa('admin:admin')
+    };
+    let r = await fetch('/api/config', { cache:'no-store', headers:hdr });
+    if(!r.ok) r = await fetch('/api/esp_config', { cache:'no-store', headers:hdr });
     if(!r.ok) throw new Error('HTTP '+r.status);
-    g.esp=await r.json();
+    g.esp = await r.json();
     renderAll();
     logln('[ESP] kész');
-  }catch(e){ logln('[ESP] hiba: '+e.message); }
+  }catch(e){
+    logln('[ESP] hiba: '+e.message);
+  }
 }
 
 /* ===== BLE helyett HTTP DWM GET ===== */
 async function doDwmGet(){
   logln('[UI] LEKÉR DWM (HTTP)');
   try{
-    const hdr={ 'Accept':'application/json','Authorization':'Basic '+btoa('admin:admin') };
-    const r = await fetch('/api/dwm_get', { cache:'no-store', headers: hdr });
+    const hdr = {
+      'Accept':'application/json',
+      'Authorization':'Basic '+btoa('admin:admin')
+    };
+    const r = await fetch('/api/dwm_get', { cache:'no-store', headers:hdr });
     if(!r.ok) throw new Error('HTTP '+r.status);
     const j = await r.json();
     g.dwm = j || {};
@@ -231,60 +457,87 @@ async function doDwmGet(){
 
 /* ===== SET mindkettőnek ===== */
 function gatherInputs(){
-  const out={};
+  const out = {};
   const every = [...GROUPS.base, ...GROUPS.sync, ...GROUPS.phy];
   for(const it of every){
     const el = $('in_'+it.k);
     if(!el || el.disabled) continue;
     const v = el.value.trim();
-    if(v!=='') out[it.k]=v;
+    if(v !== '') out[it.k] = v;
   }
   return out;
 }
+
 async function doSetBoth(){
-  const inp=gatherInputs();
-  if(Object.keys(inp).length===0){ logln('[SET] nincs módosítás'); return; }
+  const inp = gatherInputs();
+  if(Object.keys(inp).length === 0){
+    logln('[SET] nincs módosítás');
+    return;
+  }
 
   try{
-    const hdr={'Content-Type':'application/json','Authorization':'Basic '+btoa('admin:admin')};
-    let r=await fetch('/api/config',{method:'POST',headers:hdr,body:JSON.stringify(inp)});
-    if(!r.ok) r=await fetch('/api/esp_config',{method:'POST',headers:hdr,body:JSON.stringify(inp)});
+    const hdr = {
+      'Content-Type':'application/json',
+      'Authorization':'Basic '+btoa('admin:admin')
+    };
+    let r = await fetch('/api/config', { method:'POST', headers:hdr, body:JSON.stringify(inp) });
+    if(!r.ok) r = await fetch('/api/esp_config', { method:'POST', headers:hdr, body:JSON.stringify(inp) });
     if(!r.ok) throw new Error('HTTP '+r.status);
     logln('[ESP] SET elküldve');
-  }catch(e){ logln('[ESP] SET hiba: '+e.message); }
+  }catch(e){
+    logln('[ESP] SET hiba: '+e.message);
+  }
 
-  // DWM SET itt nem BLE-n megy. Ha lesz HTTP endpoint, ide illeszd.
+  // DWM SET itt még nem HTTP-n megy – ha lesz endpoint, ide illeszd.
 }
 
 /* ===== BLE csatlakozás (jelenleg nincs használva) ===== */
-function connect(){ logln('[BLE] kikapcsolva'); setPill(false,'Nincs kapcsolat'); }
+function connect(){
+  logln('[BLE] kikapcsolva');
+  setPill(false,'Nincs kapcsolat');
+}
 
 /* ===== Web Serial ===== */
-let serialReader=null;
+let serialReader = null;
+
 async function openSerial(){
-  if(!('serial' in navigator)){ alert('A böngésző nem támogatja a Web Serial API-t'); return; }
+  if(!('serial' in navigator)){
+    alert('A böngésző nem támogatja a Web Serial API-t');
+    return;
+  }
   try{
-    const port=await navigator.serial.requestPort();
-    await port.open({ baudRate: 115200 });
-    const dec=new TextDecoderStream(); const enc=new TextEncoderStream();
-    port.readable.pipeTo(dec.writable); enc.readable.pipeTo(port.writable);
-    const reader=dec.readable.getReader(); serialReader=reader;
-    const writer=enc.writable.getWriter(); serialWriter={ write: s=>writer.write(new TextEncoder().encode(s)) };
+    const port = await navigator.serial.requestPort();
+    await port.open({ baudRate:115200 });
+
+    const dec = new TextDecoderStream();
+    const enc = new TextEncoderStream();
+    port.readable.pipeTo(dec.writable);
+    enc.readable.pipeTo(port.writable);
+
+    const reader = dec.readable.getReader();
+    serialReader = reader;
+    const writer = enc.writable.getWriter();
+    serialWriter = { write: s => writer.write(new TextEncoder().encode(s)) };
+
     logln('[SERIAL] megnyitva 115200');
+
     (async function loop(){
       for(;;){
-        const {value,done}=await reader.read(); if(done) break;
+        const { value, done } = await reader.read();
+        if(done) break;
         if(value) logln(value.replace(/\r?\n/g,'\n'));
       }
-    })().catch(e=>logln('[SERIAL] hiba: '+e));
-  }catch(e){ logln('[SERIAL] nyitási hiba: '+e); }
+    })().catch(e => logln('[SERIAL] hiba: '+e));
+  }catch(e){
+    logln('[SERIAL] nyitási hiba: '+e);
+  }
 }
 
 /* ===== események ===== */
-$('btnConnect').addEventListener('click', connect);
-$('btnDwmGet').addEventListener('click', doDwmGet);
-$('btnEspGet').addEventListener('click', doEspGet);
-$('btnApply').addEventListener('click', doSetBoth);
+$('btnConnect'   ).addEventListener('click', connect);
+$('btnDwmGet'    ).addEventListener('click', doDwmGet);
+$('btnEspGet'    ).addEventListener('click', doEspGet);
+$('btnApply'     ).addEventListener('click', doSetBoth);
 $('btnOpenSerial').addEventListener('click', openSerial);
 
 renderAll();

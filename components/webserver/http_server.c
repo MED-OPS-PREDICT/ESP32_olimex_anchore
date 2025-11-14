@@ -60,6 +60,9 @@ enum {
     H_PHY_SFD, H_PHY_BR, H_PHY_PHRMODE, H_PHY_PHRRATE,
     H_PHY_STS_MODE, H_PHY_STS_LEN, H_PHY_PDOA,
 
+    // ÁLLAPOT
+    H_STATUS, H_UPTIME_MS, H_SYNC_MS,
+
     H__COUNT
 };
 
@@ -78,6 +81,10 @@ static struct {
     // PHY extra
     uint8_t  phy_plen, phy_pac, phy_tx_code, phy_rx_code, phy_sfd, phy_br,
              phy_phrmode, phy_phrrate, phy_sts_mode, phy_sts_len, phy_pdoa;
+
+    // Állapot
+    uint8_t  status;
+    uint32_t uptime_ms, sync_ms;
 
     bool     have[H__COUNT];
 } s_cfg;
@@ -101,6 +108,12 @@ static bool parse_tlvs_and_update(const uint8_t* p, uint16_t n){
         if(n < l) break;
 
         switch(t){
+
+            /* Status / uptime */
+            case 0x01: if (l==1) { s_cfg.status    = p[0]; s_cfg.have[H_STATUS]=true; changed=true; log_set_u("STATUS", s_cfg.status); } break;
+            case 0x02: if (l==4) { s_cfg.uptime_ms = rd32be(p); s_cfg.have[H_UPTIME_MS]=true; changed=true; log_set_u("UPTIME_MS", s_cfg.uptime_ms); } break;
+            case 0x03: if (l==4) { s_cfg.sync_ms   = rd32be(p); s_cfg.have[H_SYNC_MS]=true; changed=true; log_set_u("SYNC_MS", s_cfg.sync_ms); } break;
+
             /* Alap kulcsok */
             case 0x10: if(l==2){ s_cfg.network_id = rd16be(p); s_cfg.have[H_NETWORK_ID]=true; changed=true; log_set_u("NETWORK_ID", s_cfg.network_id); } break;
             case 0x11: if(l==2){ s_cfg.zone_id    = rd16be(p); s_cfg.have[H_ZONE_ID]=true;    changed=true; log_set_u("ZONE_ID", s_cfg.zone_id); } break;
@@ -149,6 +162,7 @@ static bool parse_tlvs_and_update(const uint8_t* p, uint16_t n){
 static void on_ble_notify(const uint8_t* p, uint16_t n, bool from_cfg)
 {
     if (!p || n == 0) return;
+    ESP_LOGI(TAG, "notify: len=%u, from_cfg=%d, op=0x%02x", n, from_cfg, n>=2?p[1]:0);
 
     /* SET-ACK (külön jelzés) */
     if (n == 6 && p[0] == 1 && p[1] == 0x81) {
@@ -181,6 +195,11 @@ static void on_ble_notify(const uint8_t* p, uint16_t n, bool from_cfg)
     if (is_tlv && (op == OP_START || op == OP_LINE || op == OP_DONE)) {
         if (s_sem_tlv) xSemaphoreGive(s_sem_tlv);
     }
+    else if (op == OP_DONE) {
+        s_cfg_done = true;
+        if (s_sem_tlv) xSemaphoreGive(s_sem_tlv);
+    }
+
 }
 
 /* ====== Feldolgozó task ====== */
@@ -190,6 +209,7 @@ static void tlv_worker_task(void* arg)
     for(;;){
         if(xQueueReceive(s_q,&f,portMAX_DELAY)!=pdTRUE) continue;
         if(!f) continue;
+        ESP_LOGI(TAG, "worker: frame len=%u, op=0x%02x", f->len, f->len>=2?f->data[1]:0);
 
         if (/*f->from_cfg &&*/ f->len >= 2 && f->data[0] == 1) {
             uint8_t op = f->data[1];
@@ -218,6 +238,7 @@ static void drain_queue(void){
     }
 }
 
+
 /* ====== HTTP handler: /api/dwm_get ====== */
 static esp_err_t dwm_get_handler(httpd_req_t* req)
 {
@@ -232,7 +253,14 @@ static esp_err_t dwm_get_handler(httpd_req_t* req)
     s_cfg_done=false;
     s_last_line_tick = xTaskGetTickCount();
 
-    ble_send_get(++s_last_req);
+    esp_err_t er = ble_send_get(++s_last_req);
+    ESP_LOGI(TAG, "ble_send_get rc=0x%x", er);
+    if (er != ESP_OK) {
+        httpd_resp_set_status(req, "503 Service Unavailable");
+        httpd_resp_sendstr(req, "");
+        xSemaphoreGive(s_ble_lock);
+        return ESP_FAIL;
+    }
 
     // első TLV / DONE megvárása (max 60 s)
     if(xSemaphoreTake(s_sem_tlv, pdMS_TO_TICKS(60000)) != pdTRUE){
@@ -257,6 +285,11 @@ static esp_err_t dwm_get_handler(httpd_req_t* req)
 
     /* JSON válasz */
     cJSON* j = cJSON_CreateObject();
+
+    // Állapot
+    if(s_cfg.have[H_STATUS])    cJSON_AddNumberToObject(j,"STATUS",    s_cfg.status);
+    if(s_cfg.have[H_UPTIME_MS]) cJSON_AddNumberToObject(j,"UPTIME_MS", s_cfg.uptime_ms);
+    if(s_cfg.have[H_SYNC_MS])   cJSON_AddNumberToObject(j,"SYNC_MS",   s_cfg.sync_ms);
 
     // Alap kulcsok
     if(s_cfg.have[H_NETWORK_ID]) cJSON_AddNumberToObject(j,"NETWORK_ID", s_cfg.network_id);
@@ -321,6 +354,8 @@ void http_register_routes(httpd_handle_t h)
 /* ====== Init: sor, szemaforok, callback, worker ====== */
 void ble_http_bridge_init(void)
 {
+    ESP_LOGI(TAG, "ble_http_bridge_init()");
+
     if(!s_q){
         s_q = xQueueCreate(8, sizeof(frame_t*));
     }
