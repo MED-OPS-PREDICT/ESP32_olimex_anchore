@@ -13,6 +13,7 @@
 // #include "webserver.h"
 #include "esp_spiffs.h"
 #include "webserver.hpp"
+#include "uwb_cfg_cli.h"
 
 static const char *TAG = "main";
 
@@ -127,6 +128,7 @@ void app_main(void)
 
     /* BLE: opcionális name filter, pl. "UWB_ANCHOR_01" */
     ble_start("UWB_ANCHOR_01", on_ble_notify);
+    uwb_cfg_cli_init();
 
     // példa GET kérés 600ms után:
     vTaskDelay(pdMS_TO_TICKS(600));

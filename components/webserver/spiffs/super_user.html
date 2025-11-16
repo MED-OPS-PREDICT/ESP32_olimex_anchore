@@ -161,6 +161,7 @@
 
   #log{
     white-space: pre-wrap;
+    word-break: break-all;
     height: 220px;      /* fix magasság */
     max-height: 220px;  /* ne nőjön tovább */
     overflow: auto;     /* görgetés, ha több a tartalom */
@@ -470,25 +471,43 @@ function gatherInputs(){
 
 async function doSetBoth(){
   const inp = gatherInputs();
-  if(Object.keys(inp).length === 0){
+  if (Object.keys(inp).length === 0) {
     logln('[SET] nincs módosítás');
     return;
   }
 
-  try{
-    const hdr = {
-      'Content-Type':'application/json',
-      'Authorization':'Basic '+btoa('admin:admin')
-    };
-    let r = await fetch('/api/config', { method:'POST', headers:hdr, body:JSON.stringify(inp) });
-    if(!r.ok) r = await fetch('/api/esp_config', { method:'POST', headers:hdr, body:JSON.stringify(inp) });
-    if(!r.ok) throw new Error('HTTP '+r.status);
+  const body = JSON.stringify(inp);
+  const hdrJson = {
+    'Content-Type': 'application/json',
+    'Authorization': 'Basic ' + btoa('admin:admin')
+  };
+
+  /* --- ESP config SET --- */
+  try {
+    let r = await fetch('/api/config', { method: 'POST', headers: hdrJson, body });
+    if (!r.ok) {
+      // régi firmware-n az /api/esp_config az érvényes
+      r = await fetch('/api/esp_config', { method: 'POST', headers: hdrJson, body });
+    }
+    if (!r.ok) throw new Error('HTTP ' + r.status);
     logln('[ESP] SET elküldve');
-  }catch(e){
-    logln('[ESP] SET hiba: '+e.message);
+  } catch (e) {
+    logln('[ESP] SET hiba: ' + e.message);
   }
 
-  // DWM SET itt még nem HTTP-n megy – ha lesz endpoint, ide illeszd.
+  /* --- DWM config SET (BLE-n keresztül) --- */
+  try {
+    const r = await fetch('/api/dwm_set', {
+      method: 'POST',
+      headers: hdrJson,
+      body
+    });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const j = await r.json().catch(() => ({}));
+    logln('[DWM] SET elküldve (' + (j.ok ? 'ok' : 'válasz nélkül') + ')');
+  } catch (e) {
+    logln('[DWM] SET hiba: ' + e.message);
+  }
 }
 
 /* ===== BLE csatlakozás (jelenleg nincs használva) ===== */

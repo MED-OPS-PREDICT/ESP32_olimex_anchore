@@ -8,6 +8,9 @@
 /* notifier callback: (data, len, from_cfg) */
 typedef void (*ble_notify_cb_t)(const uint8_t* data, uint16_t len, bool from_cfg);
 
+// Nyers write a CFG karakterisztikára (OP_ACK, stb. küldéséhez)
+esp_err_t ble_cfg_write_raw(const uint8_t *data, uint16_t len);
+
 esp_err_t ble_start(const char* name_filter, ble_notify_cb_t cb);
 esp_err_t ble_send_get(uint16_t req_id);
 esp_err_t ble_send_set(uint16_t req_id, const uint8_t* tlv, uint16_t len);

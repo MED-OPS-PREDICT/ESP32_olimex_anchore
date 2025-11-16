@@ -363,6 +363,11 @@ esp_err_t webserver_start(){
     httpd_uri_t any{};  any .method=HTTP_GET; any .uri="/*"; any .handler=login_get; httpd_register_uri_handler(s_http,&any);
 
     ESP_LOGI(TAG,"webserver started");
+
+    if (s_http != nullptr) {
+        http_register_routes(s_http);   // <-- itt húzza be a /api/dwm_get és /api/dwm_set route-okat
+    }
+
     return ESP_OK;
 }
 

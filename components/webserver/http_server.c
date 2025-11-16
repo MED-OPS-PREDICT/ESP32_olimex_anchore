@@ -13,7 +13,8 @@
 #include "esp_log.h"
 
 #include "cJSON.h"
-#include "ble.h"  // ble_register_notify_cb(), ble_send_get()
+#include "ble.h"          // ble_register_notify_cb(), ble_send_get()
+#include "uwb_cfg_cli.h"  // uwb_cfg_cli_set_from_json()
 
 /* ====== Általános ====== */
 static const char* TAG = "HTTP_BRIDGE";
@@ -90,22 +91,38 @@ static struct {
 } s_cfg;
 
 static void reset_cfg(void){ memset(&s_cfg, 0, sizeof(s_cfg)); }
+static uint8_t s_cfg_section = 0;  // 0 = ismeretlen, 1 = CURRENT, 2 = DEFAULTS
+static uint8_t s_tlv_section = 1;
 
 /* ====== TLV blokk feldolgozása ====== */
-static bool parse_tlvs_and_update(const uint8_t* p, uint16_t n){
-    if(!p || n < 2) return false;
+static bool parse_tlvs_and_update(const uint8_t* p, uint16_t n)
+{
+    if (!p || n < 2) return false;
     bool changed = false;
 
-    /* első ver blokk átugrása (T=0x00) ha van */
-    if(n >= 2 && p[0] == 0x00){
-        uint8_t l = p[1];
-        if(n >= 2 + l){ p += 2 + l; n -= 2 + l; }
-    }
-
-    while(n >= 2){
+    while (n >= 2) {
         uint8_t t = p[0], l = p[1];
         p += 2; n -= 2;
-        if(n < l) break;
+        if (n < l) break;
+
+        /* T_VER (0x00) – szekció kijelölése a *globális* s_tlv_section-ben */
+        if (t == 0x00 && l >= 1) {
+            uint8_t ver = p[0];
+            if      (ver == 1) s_tlv_section = 1;  // CURRENT
+            else if (ver == 2) s_tlv_section = 2;  // DEFAULTS
+            else               s_tlv_section = 0;  // ismeretlen
+
+            p += l;
+            n -= l;
+            continue;
+        }
+
+        /* Csak a CURRENT (ver=1) TLV-ket dolgozzuk fel */
+        if (s_tlv_section != 1) {
+            p += l;
+            n -= l;
+            continue;
+        }
 
         switch(t){
 
@@ -172,7 +189,7 @@ static void on_ble_notify(const uint8_t* p, uint16_t n, bool from_cfg)
 
     if (!s_q) return;
 
-    bool is_tlv = (n >= 2 && p[0] == 1);
+    bool is_tlv = (n >= 2 && (p[1] == OP_START || p[1] == OP_LINE || p[1] == OP_DONE));
     uint8_t op = is_tlv ? p[1] : 0;
 
     frame_t* f = (frame_t*)pvPortMalloc(sizeof(frame_t) + n);
@@ -211,7 +228,7 @@ static void tlv_worker_task(void* arg)
         if(!f) continue;
         ESP_LOGI(TAG, "worker: frame len=%u, op=0x%02x", f->len, f->len>=2?f->data[1]:0);
 
-        if (/*f->from_cfg &&*/ f->len >= 2 && f->data[0] == 1) {
+        if (/*f->from_cfg &&*/ f->len >= 2) {
             uint8_t op = f->data[1];
             if (op == OP_START) {
                 s_last_line_tick = xTaskGetTickCount();
@@ -238,6 +255,40 @@ static void drain_queue(void){
     }
 }
 
+static esp_err_t handle_dwm_set(httpd_req_t *req)
+{
+    char buf[512];
+    int len = httpd_req_recv(req, buf, sizeof(buf) - 1);
+    if (len <= 0) {
+        httpd_resp_set_status(req, "400 Bad Request");
+        httpd_resp_sendstr(req, "empty body");
+        return ESP_OK;
+    }
+    buf[len] = '\0';
+
+    cJSON *root = cJSON_Parse(buf);
+    if (!root) {
+        httpd_resp_set_status(req, "400 Bad Request");
+        httpd_resp_sendstr(req, "invalid JSON");
+        return ESP_OK;
+    }
+
+    static uint16_t s_req_id = 1;
+    uint16_t req_id = s_req_id++;
+
+    esp_err_t er = uwb_cfg_cli_set_from_json(root, req_id);
+    cJSON_Delete(root);
+
+    if (er != ESP_OK) {
+        httpd_resp_set_status(req, "500 Internal Server Error");
+        httpd_resp_sendstr(req, "uwb_cfg_cli_set_from_json failed");
+        return ESP_OK;
+    }
+
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_sendstr(req, "{\"ok\":true}");
+    return ESP_OK;
+}
 
 /* ====== HTTP handler: /api/dwm_get ====== */
 static esp_err_t dwm_get_handler(httpd_req_t* req)
@@ -340,15 +391,25 @@ static esp_err_t dwm_get_handler(httpd_req_t* req)
 }
 
 /* ====== HTTP route regisztrálás ====== */
+
+static const httpd_uri_t uri_dwm_get = {
+    .uri      = "/api/dwm_get",
+    .method   = HTTP_GET,
+    .handler  = dwm_get_handler,
+    .user_ctx = NULL
+};
+
+static const httpd_uri_t uri_dwm_set = {
+    .uri      = "/api/dwm_set",
+    .method   = HTTP_POST,
+    .handler  = handle_dwm_set,
+    .user_ctx = NULL
+};
+
 void http_register_routes(httpd_handle_t h)
 {
-    httpd_uri_t u = {
-        .uri = "/api/dwm_get",
-        .method = HTTP_GET,
-        .handler = dwm_get_handler,
-        .user_ctx = NULL
-    };
-    httpd_register_uri_handler(h, &u);
+    httpd_register_uri_handler(h, &uri_dwm_get);
+    httpd_register_uri_handler(h, &uri_dwm_set);
 }
 
 /* ====== Init: sor, szemaforok, callback, worker ====== */

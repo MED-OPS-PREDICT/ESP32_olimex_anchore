@@ -730,4 +730,18 @@ esp_err_t ble_send_set(uint16_t req_id, const uint8_t* tlv, uint16_t len)
     return er;
 }
 
+esp_err_t ble_cfg_write_raw(const uint8_t *data, uint16_t len)
+{
+    if (!g_connected || !g_cfg_h) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    return esp_ble_gattc_write_char(g_gattc_if,
+                                    g_conn_id,
+                                    g_cfg_h,
+                                    len,
+                                    (uint8_t *)data,
+                                    ESP_GATT_WRITE_TYPE_RSP,
+                                    ESP_GATT_AUTH_REQ_NONE);
+}
 
