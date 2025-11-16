@@ -251,6 +251,22 @@
         </table>
       </div>
 
+      <div class="sec-title">Cél IP-k (IPS szerverek):</div>
+      <div class="table-wrap">
+        <table id="tblIps" class="cfg-table">
+          <colgroup>
+            <col class="col-key">
+            <col class="col-esp">
+            <col class="col-dwm">
+            <col class="col-new">
+          </colgroup>
+          <thead>
+            <tr><th>Kulcs</th><th>ESP</th><th>DWM</th><th>Új érték</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
       <div class="sec-title">Szinkron:</div>
       <div class="table-wrap">
         <table id="tblSync" class="cfg-table">
@@ -357,7 +373,23 @@ const GROUPS = {
     {k:'LOG_LEVEL',  edit:true},
     {k:'TX_ANT_DLY', edit:true},
     {k:'RX_ANT_DLY', edit:true},
-    {k:'BIAS_TICKS', edit:true},
+    {k:'BIAS_TICKS', edit:true}
+  ],
+  ips: [
+    {hdr:'Zóna vezérlő'},
+      {k:'UDP_DEST1_IP',   edit:true, label:'Zóna vezérlő IP'},
+      {k:'UDP_DEST1_PORT', edit:true, label:'Zóna vezérlő PORT'},
+      {k:'UDP_DEST1_EN',   edit:true, label:'Zóna vezérlő ENGEDÉLY'},
+
+    {hdr:'Fő szerver'},
+      {k:'UDP_DEST2_IP',   edit:true, label:'Fő szerver IP'},
+      {k:'UDP_DEST2_PORT', edit:true, label:'Fő szerver PORT'},
+      {k:'UDP_DEST2_EN',   edit:true, label:'Fő szerver ENGEDÉLY'},
+
+    {hdr:'Service'},
+      {k:'UDP_DEST3_IP',   edit:true, label:'Service IP'},
+      {k:'UDP_DEST3_PORT', edit:true, label:'Service PORT'},
+      {k:'UDP_DEST3_EN',   edit:true, label:'Service ENGEDÉLY'}
   ],
   sync: [
     {k:'PPM_MAX',     edit:true},
@@ -399,18 +431,25 @@ function renderGroup(tblId, items, withInputs){
     return;
   }
   tb.innerHTML = items.map(it =>{
-    const key = it.k;
+    // ha csak alcím (hdr) van, akkor egy teljes soros header
+    if (it.hdr) {
+      return `<tr><td colspan="4" class="muted" style="padding-top:10px;font-weight:600;">${it.hdr}</td></tr>`;
+    }
+
+    const key   = it.k;
+    const label = it.label || key;
     const esp = (g.esp && g.esp[key] !== undefined) ? g.esp[key] : '-';
     const dwm = (g.dwm && g.dwm[key] !== undefined) ? g.dwm[key] : '-';
     const input = withInputs && it.edit
       ? `<input class="inp" id="in_${key}" placeholder="új érték">`
       : `<input class="inp" id="in_${key}" placeholder="nem írható" disabled>`;
-    return `<tr><td>${key}</td>${cell(esp)}${cell(dwm)}<td>${input}</td></tr>`;
+    return `<tr><td>${label}</td>${cell(esp)}${cell(dwm)}<td>${input}</td></tr>`;
   }).join('');
 }
 
 function renderAll(){
   renderGroup('tblBase', GROUPS.base, true);
+  renderGroup('tblIps',  GROUPS.ips,  true);   // ← ÚJ
   renderGroup('tblSync', GROUPS.sync, true);
   renderGroup('tblPhy',  GROUPS.phy,  true);
 }
@@ -459,8 +498,9 @@ async function doDwmGet(){
 /* ===== SET mindkettőnek ===== */
 function gatherInputs(){
   const out = {};
-  const every = [...GROUPS.base, ...GROUPS.sync, ...GROUPS.phy];
+  const every = [...GROUPS.base, ...GROUPS.ips, ...GROUPS.sync, ...GROUPS.phy];
   for(const it of every){
+    if (!it.k) continue; // hdr soroknál nincs k
     const el = $('in_'+it.k);
     if(!el || el.disabled) continue;
     const v = el.value.trim();

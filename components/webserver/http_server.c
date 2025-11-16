@@ -257,17 +257,36 @@ static void drain_queue(void){
 
 static esp_err_t handle_dwm_set(httpd_req_t *req)
 {
-    char buf[512];
-    int len = httpd_req_recv(req, buf, sizeof(buf) - 1);
+    int len = req->content_len;
     if (len <= 0) {
         httpd_resp_set_status(req, "400 Bad Request");
         httpd_resp_sendstr(req, "empty body");
         return ESP_OK;
     }
-    buf[len] = '\0';
+
+    char *buf = malloc(len + 1);
+    if (!buf) {
+        httpd_resp_set_status(req, "500 Internal Server Error");
+        httpd_resp_sendstr(req, "no mem");
+        return ESP_OK;
+    }
+
+    int off = 0;
+    while (off < len) {
+        int r = httpd_req_recv(req, buf + off, len - off);
+        if (r <= 0) {
+            free(buf);
+            httpd_resp_set_status(req, "500 Internal Server Error");
+            httpd_resp_sendstr(req, "recv error");
+            return ESP_OK;
+        }
+        off += r;
+    }
+    buf[off] = '\0';
 
     cJSON *root = cJSON_Parse(buf);
     if (!root) {
+        free(buf);
         httpd_resp_set_status(req, "400 Bad Request");
         httpd_resp_sendstr(req, "invalid JSON");
         return ESP_OK;
@@ -278,6 +297,7 @@ static esp_err_t handle_dwm_set(httpd_req_t *req)
 
     esp_err_t er = uwb_cfg_cli_set_from_json(root, req_id);
     cJSON_Delete(root);
+    free(buf);
 
     if (er != ESP_OK) {
         httpd_resp_set_status(req, "500 Internal Server Error");

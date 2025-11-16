@@ -5,16 +5,11 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="d7727baf-cd08-430d-884d-b4e040b4a9ee" name="Changes" comment="a">
-      <change afterPath="$PROJECT_DIR$/components/webserver/uwb_cfg_cli.c" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/components/webserver/uwb_cfg_cli.h" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/components/ble/ble.c" beforeDir="false" afterPath="$PROJECT_DIR$/components/ble/ble.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/components/ble/ble.h" beforeDir="false" afterPath="$PROJECT_DIR$/components/ble/ble.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/components/webserver/CMakeLists.txt" beforeDir="false" afterPath="$PROJECT_DIR$/components/webserver/CMakeLists.txt" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/components/webserver/http_server.c" beforeDir="false" afterPath="$PROJECT_DIR$/components/webserver/http_server.c" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/components/webserver/spiffs/super_user.html" beforeDir="false" afterPath="$PROJECT_DIR$/components/webserver/spiffs/super_user.html" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/components/webserver/webserver.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/components/webserver/webserver.cpp" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/main/main.c" beforeDir="false" afterPath="$PROJECT_DIR$/main/main.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/main/globals.c" beforeDir="false" afterPath="$PROJECT_DIR$/main/globals.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/main/globals.h" beforeDir="false" afterPath="$PROJECT_DIR$/main/globals.h" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -165,7 +160,15 @@
       <option name="project" value="LOCAL" />
       <updated>1763140115223</updated>
     </task>
-    <option name="localTasksCounter" value="12" />
+    <task id="LOCAL-00012" summary="a">
+      <option name="closed" value="true" />
+      <created>1763303946550</created>
+      <option name="number" value="00012" />
+      <option name="presentableId" value="LOCAL-00012" />
+      <option name="project" value="LOCAL" />
+      <updated>1763303946550</updated>
+    </task>
+    <option name="localTasksCounter" value="13" />
     <servers />
   </component>
   <component name="Vcs.Log.Tabs.Properties">
