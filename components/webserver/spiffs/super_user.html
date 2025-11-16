@@ -36,19 +36,48 @@
   }
   h1{margin:0;font-size:16px;}
 
-  .wrap{
-    padding:16px;
-    display:grid;
-    gap:14px;
-    max-width:1440px;         /* FHD-ra optimalizált, 4K-nál középre zárt */
-    margin:0 auto;
-  }
+    .wrap{
+      padding:16px;
+      display:grid;
+      gap:14px;
+      max-width:1840px;
+      margin:0 auto;
+    }
+
+    /* KONFIG KÁRTYÁK RÁCSA – fix szélességek, középre rendezve */
+    .cfg-grid{
+      display:grid;
+      gap:14px;
+      grid-template-columns: 360px 520px 360px; /* bal – középső – jobb */
+      justify-content:center;                  /* rács középre */
+    }
+
+    /* maga a kártya: azonos magasság, a tartalom kitölti */
+    .cfg-card{
+      display:flex;
+      flex-direction:column;
+      /*min-height:520px; */                        /* kártya “pontos” magassága */
+    }
+
+    .cfg-card .bd{
+      flex:1 1 auto;
+      overflow:hidden;
+    }
+
+    /* ha azt szeretnéd, hogy a táblák belül görgősek lehessenek: */
+    .cfg-card .table-wrap{
+      /*max-height:380px; */                        /* ízlés szerint állítható */
+      overflow-y:auto;
+    }
 
   .card{
     background:color-mix(in srgb,var(--panel) 92%,#000 8%);
     border:1px solid rgba(255,255,255,.08);
     border-radius:16px;
     box-shadow:0 10px 34px rgba(0,0,0,.35);
+  }
+  .card.full{
+    grid-column:1 / -1;
   }
   .card .hd{
     display:flex;
@@ -58,7 +87,22 @@
     border-bottom:1px solid rgba(255,255,255,.06);
     gap:8px;
   }
+  .card .hd-title{
+    display:flex;
+    flex-direction:column;
+    gap:2px;
+  }
+  .card .hd-title small{
+    font-size:11px;
+    color:var(--muted);
+  }
   .card .bd{padding:12px 14px 14px;}
+
+  .cfg-grid{
+    display:grid;
+    gap:14px;
+    grid-template-columns:repeat(auto-fit,minmax(380px,1fr));
+  }
 
   .btn{
     appearance:none;
@@ -129,7 +173,7 @@
 
   .table-wrap{
     width:100%;
-    overflow-x:auto;           /* kisebb képernyőn vízszintes scroll, nem esik szét */
+    overflow-x:auto;
   }
 
   table{
@@ -149,22 +193,39 @@
     font-weight:600;
   }
 
-  .cfg-table col.col-key   { width:220px; }   /* fix oszlopszélességek */
-  .cfg-table col.col-esp   { width:90px;  }
-  .cfg-table col.col-dwm   { width:90px;  }
-  .cfg-table col.col-new   { width:auto;  }
+    /* alapértelmezett arányok – ha máshol is használsz cfg-table-t */
+    .cfg-table col.col-key  { width:45%; }
+    .cfg-table col.col-esp  { width:15%; }
+    .cfg-table col.col-dwm  { width:15%; }
+    .cfg-table col.col-new  { width:25%; }
 
-  .cfg-table td:nth-child(2),
-  .cfg-table td:nth-child(3){
-    text-align:right;          /* ESP / DWM számok jobbra igazítva */
-  }
+    /* 1. kártya: közös (ESP + DWM) – itt legyen széles a kulcs, két vékony érték, közepes új érték */
+    #tblBase col.col-key  { width:42%; }
+    #tblBase col.col-esp  { width:13%; }
+    #tblBase col.col-dwm  { width:13%; }
+    #tblBase col.col-new  { width:32%; }
+
+    /* 2. kártya: ESP konfiguráció – Kulcs nagy, ESP közepes, Új érték nagyobb */
+    #tblIps  col.col-key  { width:50%; }
+    #tblIps  col.col-esp  { width:15%; }
+    #tblIps  col.col-new  { width:35%; }
+
+    /* 3. kártya: DWM konfiguráció – Kulcs közepes, DWM közepes, Új érték nagyobb */
+    #tblSync col.col-key,
+    #tblPhy  col.col-key  { width:40%; }
+
+    #tblSync col.col-dwm,
+    #tblPhy  col.col-dwm  { width:20%; }
+
+    #tblSync col.col-new,
+    #tblPhy  col.col-new  { width:40%; }
 
   #log{
     white-space: pre-wrap;
     word-break: break-all;
-    height: 220px;      /* fix magasság */
-    max-height: 220px;  /* ne nőjön tovább */
-    overflow: auto;     /* görgetés, ha több a tartalom */
+    height: 220px;
+    max-height: 220px;
+    overflow: auto;
   }
 
   #warn{
@@ -194,9 +255,13 @@
 <div class="wrap">
   <div id="warn" class="mono"></div>
 
-  <section class="card">
+  <!-- DWM kapcsolat kártya – teljes szélesség -->
+  <section class="card full">
     <div class="hd">
-      <div>DWM kapcsolat</div>
+      <div class="hd-title">
+        <span>DWM kapcsolat</span>
+        <small>UUID-k, Req ID, soros log megnyitása</small>
+      </div>
       <div id="statusPill" class="pill err">Nincs kapcsolat</div>
     </div>
     <div class="bd">
@@ -225,85 +290,113 @@
     </div>
   </section>
 
-  <section class="card">
-    <div class="hd">
-      <div>Konfiguráció</div>
-      <div class="toolbar">
-        <button class="btn ghost" id="btnEspGet">LEKÉR ESP</button>
-        <button class="btn ghost" id="btnDwmGet">LEKÉR DWM</button>
-        <button class="btn" id="btnApply">Beállít (ESP + DWM)</button>
-      </div>
-    </div>
-    <div class="bd">
-      <div class="sec-title">Alap:</div>
-      <div class="table-wrap">
-        <table id="tblBase" class="cfg-table">
-          <colgroup>
-            <col class="col-key">
-            <col class="col-esp">
-            <col class="col-dwm">
-            <col class="col-new">
-          </colgroup>
-          <thead>
-            <tr><th>Kulcs</th><th>ESP</th><th>DWM</th><th>Új érték</th></tr>
-          </thead>
-          <tbody></tbody>
-        </table>
-      </div>
+  <!-- Konfigurációs kártyák rácsban -->
+  <div class="cfg-grid">
 
-      <div class="sec-title">Cél IP-k (IPS szerverek):</div>
-      <div class="table-wrap">
-        <table id="tblIps" class="cfg-table">
-          <colgroup>
-            <col class="col-key">
-            <col class="col-esp">
-            <col class="col-dwm">
-            <col class="col-new">
-          </colgroup>
-          <thead>
-            <tr><th>Kulcs</th><th>ESP</th><th>DWM</th><th>Új érték</th></tr>
-          </thead>
-          <tbody></tbody>
-        </table>
+    <!-- Közös (ESP + DWM) -->
+    <section class="card cfg-card">
+      <div class="hd">
+        <div class="hd-title">
+          <span>Közös konfiguráció (ESP + DWM)</span>
+          <small>Hálózat, zóna, anchor, log, antenna, alap PHY</small>
+        </div>
+        <div class="toolbar">
+          <button class="btn ghost" id="btnEspGet">LEKÉR ESP</button>
+          <button class="btn ghost" id="btnDwmGet">LEKÉR DWM</button>
+          <button class="btn" id="btnApply">Beállít (ESP + DWM)</button>
+        </div>
       </div>
-
-      <div class="sec-title">Szinkron:</div>
-      <div class="table-wrap">
-        <table id="tblSync" class="cfg-table">
-          <colgroup>
-            <col class="col-key">
-            <col class="col-esp">
-            <col class="col-dwm">
-            <col class="col-new">
-          </colgroup>
-          <thead>
-            <tr><th>Kulcs</th><th>ESP</th><th>DWM</th><th>Új érték</th></tr>
-          </thead>
-          <tbody></tbody>
-        </table>
+      <div class="bd">
+        <div class="sec-title">Alap paraméterek:</div>
+        <div class="table-wrap">
+          <table id="tblBase" class="cfg-table">
+            <colgroup>
+              <col class="col-key">
+              <col class="col-esp">
+              <col class="col-dwm">
+              <col class="col-new">
+            </colgroup>
+            <thead>
+              <tr><th>Kulcs</th><th>ESP</th><th>DWM</th><th>Új érték</th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div class="muted" style="margin-top:6px">Üres mező nem küldődik.</div>
       </div>
+    </section>
 
-      <div class="sec-title">PHY:</div>
-      <div class="table-wrap">
-        <table id="tblPhy" class="cfg-table">
-          <colgroup>
-            <col class="col-key">
-            <col class="col-esp">
-            <col class="col-dwm">
-            <col class="col-new">
-          </colgroup>
-          <thead>
-            <tr><th>Kulcs</th><th>ESP</th><th>DWM</th><th>Új érték</th></tr>
-          </thead>
-          <tbody></tbody>
-        </table>
+    <!-- ESP-only -->
+    <section class="card cfg-card">
+      <div class="hd">
+        <div class="hd-title">
+          <span>ESP konfiguráció</span>
+          <small>Ethernet, saját IP, gateway, IPS cél IP-k</small>
+        </div>
       </div>
+      <div class="bd">
+        <div class="sec-title">Ethernet és cél IP-k:</div>
+        <div class="table-wrap">
+          <table id="tblIps" class="cfg-table esp-only">
+            <colgroup>
+              <col class="col-key">
+              <col class="col-esp">
+              <col class="col-new">
+            </colgroup>
+            <thead>
+              <tr><th>Kulcs</th><th>ESP</th><th>Új érték</th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
 
-      <div class="muted" style="margin-top:6px">Üres mező nem küldődik.</div>
-    </div>
-  </section>
+    <!-- DWM-only -->
+    <section class="card cfg-card">
+      <div class="hd">
+        <div class="hd-title">
+          <span>DWM konfiguráció</span>
+          <small>Szinkron és PHY paraméterek</small>
+        </div>
+      </div>
+      <div class="bd">
+        <div class="sec-title">Szinkron:</div>
+        <div class="table-wrap">
+          <table id="tblSync" class="cfg-table dwm-only">
+            <colgroup>
+              <col class="col-key">
+              <col class="col-dwm">
+              <col class="col-new">
+            </colgroup>
+            <thead>
+              <tr><th>Kulcs</th><th>DWM</th><th>Új érték</th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
 
-  <section class="card">
+        <div class="sec-title">PHY:</div>
+        <div class="table-wrap">
+          <table id="tblPhy" class="cfg-table dwm-only">
+            <colgroup>
+              <col class="col-key">
+              <col class="col-dwm">
+              <col class="col-new">
+            </colgroup>
+            <thead>
+              <tr><th>Kulcs</th><th>ESP</th><th>DWM</th><th>Új érték</th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+  </div>
+
+  <!-- Log – teljes szélesség -->
+  <section class="card full">
     <div class="hd">
       <div>Log</div>
       <div class="muted">Soros és böngésző</div>
@@ -351,72 +444,78 @@ function setPill(ok, txt){
   if(!secure){
     const w = $('warn');
     w.style.display = 'block';
-    w.textContent   = 'Web Bluetooth csak HTTPS-en vagy localhost-on működik. Jelenleg: ' +
-                      location.protocol + '//' + location.host;
-    logln('[BLE] Secure Context szükséges (HTTPS vagy localhost)');
   }
   if(!('bluetooth' in navigator)){
     const w = $('warn');
     w.style.display = 'block';
-    w.textContent  += ' | A böngésző nem támogatja a Web Bluetooth API-t.';
-    logln('[BLE] navigator.bluetooth nem elérhető');
   }
 })();
 
 /* ===== renderdef ===== */
 const GROUPS = {
   base: [
-    {k:'NETWORK_ID', edit:true},
-    {k:'ZONE_ID',    edit:true},
-    {k:'ANCHOR_ID',  edit:true},
-    {k:'HB_MS',      edit:true},
-    {k:'LOG_LEVEL',  edit:true},
-    {k:'TX_ANT_DLY', edit:true},
-    {k:'RX_ANT_DLY', edit:true},
-    {k:'BIAS_TICKS', edit:true}
+    {k:'NETWORK_ID', edit:true, to:'both'},
+    {k:'ZONE_ID',    edit:true, to:'both'},
+    {k:'ANCHOR_ID',  edit:true, to:'both'},
+    {k:'HB_MS',      edit:true, to:'both'},
+    {k:'LOG_LEVEL',  edit:true, to:'both'},
+    {k:'TX_ANT_DLY', edit:true, to:'both'},
+    {k:'RX_ANT_DLY', edit:true, to:'both'},
+    {k:'BIAS_TICKS', edit:true, to:'both'},
+    {k:'PHY_CH',     edit:true, to:'both'},
+    {k:'PHY_SFDTO',  edit:true, to:'both'}
   ],
   ips: [
+    {hdr:'Saját ethernet (ESP)'},
+      {k:'ETH_MODE', edit:true, to:'esp', label:'Mód (0=DHCP, 1=STATIKUS)'},
+      {k:'ETH_IP',   edit:true, to:'esp', label:'Saját IP'},
+      {k:'ETH_MASK', edit:true, to:'esp', label:'Maszk'},
+      {k:'ETH_GW',   edit:true, to:'esp', label:'Alapértelmezett gateway'},
+
+    {hdr:'Gateway'},
+      {k:'GW_ID',          edit:true, to:'esp', label:'Gateway ID'},
+
     {hdr:'Zóna vezérlő'},
-      {k:'UDP_DEST1_IP',   edit:true, label:'Zóna vezérlő IP'},
-      {k:'UDP_DEST1_PORT', edit:true, label:'Zóna vezérlő PORT'},
-      {k:'UDP_DEST1_EN',   edit:true, label:'Zóna vezérlő ENGEDÉLY'},
+      {k:'ZONE_CTRL_IP',   edit:true, to:'esp', label:'Zóna vezérlő IP'},
+      {k:'ZONE_CTRL_PORT', edit:true, to:'esp', label:'Zóna vezérlő PORT'},
+      {k:'ZONE_CTRL_EN',   edit:true, to:'esp', label:'Zóna vezérlő ENGEDÉLY'},
 
     {hdr:'Fő szerver'},
-      {k:'UDP_DEST2_IP',   edit:true, label:'Fő szerver IP'},
-      {k:'UDP_DEST2_PORT', edit:true, label:'Fő szerver PORT'},
-      {k:'UDP_DEST2_EN',   edit:true, label:'Fő szerver ENGEDÉLY'},
+      {k:'MAIN_IP',        edit:true, to:'esp', label:'Fő szerver IP'},
+      {k:'MAIN_PORT',      edit:true, to:'esp', label:'Fő szerver PORT'},
+      {k:'MAIN_EN',        edit:true, to:'esp', label:'Fő szerver ENGEDÉLY'},
 
     {hdr:'Service'},
-      {k:'UDP_DEST3_IP',   edit:true, label:'Service IP'},
-      {k:'UDP_DEST3_PORT', edit:true, label:'Service PORT'},
-      {k:'UDP_DEST3_EN',   edit:true, label:'Service ENGEDÉLY'}
+      {k:'SERVICE_IP',     edit:true, to:'esp', label:'Service IP'},
+      {k:'SERVICE_PORT',   edit:true, to:'esp', label:'Service PORT'},
+      {k:'SERVICE_EN',     edit:true, to:'esp', label:'Service ENGEDÉLY'}
   ],
   sync: [
-    {k:'PPM_MAX',     edit:true},
-    {k:'JUMP_PPM',    edit:true},
-    {k:'AB_GAP_MS',   edit:true},
-    {k:'MS_EWMA_DEN', edit:true},
-    {k:'TK_EWMA_DEN', edit:true},
-    {k:'TK_MIN_MS',   edit:true},
-    {k:'TK_MAX_MS',   edit:true},
-    {k:'DTTX_MIN_MS', edit:true},
-    {k:'DTTX_MAX_MS', edit:true},
-    {k:'LOCK_NEED',   edit:true}
+    {k:'PPM_MAX',     edit:true, to:'dwm'},
+    {k:'JUMP_PPM',    edit:true, to:'dwm'},
+    {k:'AB_GAP_MS',   edit:true, to:'dwm'},
+    {k:'MS_EWMA_DEN', edit:true, to:'dwm'},
+    {k:'TK_EWMA_DEN', edit:true, to:'dwm'},
+    {k:'TK_MIN_MS',   edit:true, to:'dwm'},
+    {k:'TK_MAX_MS',   edit:true, to:'dwm'},
+    {k:'DTTX_MIN_MS', edit:true, to:'dwm'},
+    {k:'DTTX_MAX_MS', edit:true, to:'dwm'},
+    {k:'LOCK_NEED',   edit:true, to:'dwm'}
   ],
   phy: [
-    {k:'PHY_CH',       edit:true},
-    {k:'PHY_PLEN',     edit:true},
-    {k:'PHY_PAC',      edit:true},
-    {k:'PHY_TX_CODE',  edit:true},
-    {k:'PHY_RX_CODE',  edit:true},
-    {k:'PHY_SFD',      edit:true},
-    {k:'PHY_BR',       edit:true},
-    {k:'PHY_PHRMODE',  edit:true},
-    {k:'PHY_PHRRATE',  edit:true},
-    {k:'PHY_SFDTO',    edit:true},
-    {k:'PHY_STS_MODE', edit:true},
-    {k:'PHY_STS_LEN',  edit:true},
-    {k:'PHY_PDOA',     edit:true}
+    {k:'PHY_CH',       edit:true, to:'both'},
+    {k:'PHY_PLEN',     edit:true, to:'dwm'},
+    {k:'PHY_PAC',      edit:true, to:'dwm'},
+    {k:'PHY_TX_CODE',  edit:true, to:'dwm'},
+    {k:'PHY_RX_CODE',  edit:true, to:'dwm'},
+    {k:'PHY_SFD',      edit:true, to:'dwm'},
+    {k:'PHY_BR',       edit:true, to:'dwm'},
+    {k:'PHY_PHRMODE',  edit:true, to:'dwm'},
+    {k:'PHY_PHRRATE',  edit:true, to:'dwm'},
+    {k:'PHY_SFDTO',    edit:true, to:'both'},
+    {k:'PHY_STS_MODE', edit:true, to:'dwm'},
+    {k:'PHY_STS_LEN',  edit:true, to:'dwm'},
+    {k:'PHY_PDOA',     edit:true, to:'dwm'}
   ]
 };
 
@@ -424,34 +523,49 @@ function cell(v){
   return `<td class="mono">${v===undefined||v===null?'-':v}</td>`;
 }
 
-function renderGroup(tblId, items, withInputs){
+function renderGroup(tblId, items, cfg){
+  const { showEsp, showDwm } = cfg;
   const tb = qs(`#${tblId} tbody`);
   if(!tb){
-    logln('[UI] hiányzó tábla: '+tblId);
+    logln('[UI] hiányzó tábla: ' + tblId);
     return;
   }
-  tb.innerHTML = items.map(it =>{
-    // ha csak alcím (hdr) van, akkor egy teljes soros header
+
+  const colSpan = 1 + (showEsp ? 1 : 0) + (showDwm ? 1 : 0) + 1;
+
+  tb.innerHTML = items.map(it => {
+    // alcím sor
     if (it.hdr) {
-      return `<tr><td colspan="4" class="muted" style="padding-top:10px;font-weight:600;">${it.hdr}</td></tr>`;
+      return `<tr><td colspan="${colSpan}" class="muted" style="padding-top:10px;font-weight:600;">${it.hdr}</td></tr>`;
     }
 
     const key   = it.k;
     const label = it.label || key;
-    const esp = (g.esp && g.esp[key] !== undefined) ? g.esp[key] : '-';
-    const dwm = (g.dwm && g.dwm[key] !== undefined) ? g.dwm[key] : '-';
-    const input = withInputs && it.edit
+    const esp   = (g.esp && g.esp[key] !== undefined) ? g.esp[key] : '-';
+    const dwm   = (g.dwm && g.dwm[key] !== undefined) ? g.dwm[key] : '-';
+
+    const input = it.edit
       ? `<input class="inp" id="in_${key}" placeholder="új érték">`
       : `<input class="inp" id="in_${key}" placeholder="nem írható" disabled>`;
-    return `<tr><td>${label}</td>${cell(esp)}${cell(dwm)}<td>${input}</td></tr>`;
+
+    const cells = [];
+    cells.push(`<td>${label}</td>`);
+    if (showEsp) cells.push(cell(esp));
+    if (showDwm) cells.push(cell(dwm));
+    cells.push(`<td>${input}</td>`);
+
+    return `<tr>${cells.join('')}</tr>`;
   }).join('');
 }
 
 function renderAll(){
-  renderGroup('tblBase', GROUPS.base, true);
-  renderGroup('tblIps',  GROUPS.ips,  true);   // ← ÚJ
-  renderGroup('tblSync', GROUPS.sync, true);
-  renderGroup('tblPhy',  GROUPS.phy,  true);
+  // közös: ESP + DWM
+  renderGroup('tblBase', GROUPS.base, { showEsp:true, showDwm:true });
+  // ESP-only
+  renderGroup('tblIps',  GROUPS.ips,  { showEsp:true, showDwm:false });
+  // DWM-only
+  renderGroup('tblSync', GROUPS.sync, { showEsp:false, showDwm:true });
+  renderGroup('tblPhy',  GROUPS.phy,  { showEsp:false, showDwm:true });
 }
 
 /* ===== állapot ===== */
@@ -459,6 +573,8 @@ let g = { dev:null, server:null, svc:null, cfg:null, data:null, esp:{}, dwm:{} }
 
 /* ===== ESP GET (HTTP) ===== */
 async function doEspGet(){
+  if (gBusy) return;
+  setBusy(true);
   logln('[ESP] lekérés indul');
   try{
     const hdr = {
@@ -473,11 +589,15 @@ async function doEspGet(){
     logln('[ESP] kész');
   }catch(e){
     logln('[ESP] hiba: '+e.message);
+  }finally{
+    setBusy(false);
   }
 }
 
 /* ===== BLE helyett HTTP DWM GET ===== */
 async function doDwmGet(){
+  if (gBusy) return;
+  setBusy(true);
   logln('[UI] LEKÉR DWM (HTTP)');
   try{
     const hdr = {
@@ -492,61 +612,86 @@ async function doDwmGet(){
     logln('[DWM] kész (HTTP): '+JSON.stringify(j));
   }catch(e){
     logln('[DWM] hiba (HTTP): '+e);
+  }finally{
+    setBusy(false);
   }
 }
 
 /* ===== SET mindkettőnek ===== */
 function gatherInputs(){
-  const out = {};
-  const every = [...GROUPS.base, ...GROUPS.ips, ...GROUPS.sync, ...GROUPS.phy];
-  for(const it of every){
-    if (!it.k) continue; // hdr soroknál nincs k
-    const el = $('in_'+it.k);
-    if(!el || el.disabled) continue;
-    const v = el.value.trim();
-    if(v !== '') out[it.k] = v;
+  const outEsp = {};
+  const outDwm = {};
+  const groups = [GROUPS.base, GROUPS.ips, GROUPS.sync, GROUPS.phy];
+
+  for(const grp of groups){
+    for(const it of grp){
+      if (!it.k) continue;
+      const el = $('in_'+it.k);
+      if(!el || el.disabled) continue;
+      const v = el.value.trim();
+      if(v === '') continue;
+
+      const dest = it.to || 'both';
+      if (dest === 'esp'  || dest === 'both') outEsp[it.k] = v;
+      if (dest === 'dwm'  || dest === 'both') outDwm[it.k] = v;
+    }
   }
-  return out;
+  return { esp: outEsp, dwm: outDwm };
 }
 
 async function doSetBoth(){
-  const inp = gatherInputs();
-  if (Object.keys(inp).length === 0) {
-    logln('[SET] nincs módosítás');
-    return;
-  }
+  if (gBusy) return;
+  setBusy(true);
 
-  const body = JSON.stringify(inp);
-  const hdrJson = {
-    'Content-Type': 'application/json',
-    'Authorization': 'Basic ' + btoa('admin:admin')
-  };
-
-  /* --- ESP config SET --- */
   try {
-    let r = await fetch('/api/config', { method: 'POST', headers: hdrJson, body });
-    if (!r.ok) {
-      // régi firmware-n az /api/esp_config az érvényes
-      r = await fetch('/api/esp_config', { method: 'POST', headers: hdrJson, body });
+    const { esp: inpEsp, dwm: inpDwm } = gatherInputs();
+
+    if (Object.keys(inpEsp).length === 0 && Object.keys(inpDwm).length === 0) {
+      logln('[SET] nincs módosítás');
+      return;
     }
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    logln('[ESP] SET elküldve');
-  } catch (e) {
-    logln('[ESP] SET hiba: ' + e.message);
-  }
 
-  /* --- DWM config SET (BLE-n keresztül) --- */
-  try {
-    const r = await fetch('/api/dwm_set', {
-      method: 'POST',
-      headers: hdrJson,
-      body
-    });
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    const j = await r.json().catch(() => ({}));
-    logln('[DWM] SET elküldve (' + (j.ok ? 'ok' : 'válasz nélkül') + ')');
-  } catch (e) {
-    logln('[DWM] SET hiba: ' + e.message);
+    const hdrJson = {
+      'Content-Type': 'application/json',
+      'Authorization': 'Basic ' + btoa('admin:admin')
+    };
+
+    if (Object.keys(inpEsp).length > 0) {
+      const bodyEsp = JSON.stringify(inpEsp);
+      try {
+        let r = await fetch('/api/config', { method:'POST', headers:hdrJson, body:bodyEsp });
+        if (!r.ok) r = await fetch('/api/esp_config', { method:'POST', headers:hdrJson, body:bodyEsp });
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        logln('[ESP] SET elküldve: ' + bodyEsp);
+      } catch (e) {
+        logln('[ESP] SET hiba: ' + e.message);
+      }
+    }
+
+    if (Object.keys(inpDwm).length > 0) {
+      const bodyDwm = JSON.stringify(inpDwm);
+      try {
+        const r = await fetch('/api/dwm_set', { method:'POST', headers:hdrJson, body:bodyDwm });
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        const j = await r.json().catch(() => ({}));
+        logln('[DWM] SET elküldve: ' + bodyDwm + ' (' + (j.ok ? 'ok' : 'válasz nélkül') + ')');
+      } catch (e) {
+        logln('[DWM] SET hiba: ' + e.message);
+      }
+    }
+  } finally {
+    setBusy(false);
+  }
+}
+
+const BUSY_BTNS = ['btnEspGet','btnDwmGet','btnApply'];
+let gBusy = false;
+
+function setBusy(b){
+  gBusy = b;
+  for(const id of BUSY_BTNS){
+    const el = $(id);
+    if (el) el.disabled = b;
   }
 }
 

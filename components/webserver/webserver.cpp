@@ -236,7 +236,36 @@ struct EspCfg {
     int32_t  BIAS_TICKS = 0;
     uint8_t  PHY_CH     = 9;
     uint16_t PHY_SFDTO  = 248;
+
+    /* --- ÚJ: gateway + 3 cél IP-csoport --- */
+    uint32_t GW_ID      = 1;
+
+    char ZONE_CTRL_IP[16] = "0.0.0.0";
+    uint16_t ZONE_CTRL_PORT = 0;
+    uint8_t  ZONE_CTRL_EN   = 0;
+
+    char MAIN_IP[16] = "0.0.0.0";
+    uint16_t MAIN_PORT = 0;
+    uint8_t  MAIN_EN   = 0;
+
+    char SERVICE_IP[16] = "0.0.0.0";
+    uint16_t SERVICE_PORT = 0;
+    uint8_t  SERVICE_EN   = 0;
+
+    // Saját ethernet:
+    uint8_t  ETH_MODE = 0;         // 0 = DHCP, 1 = statikus
+    char     ETH_IP[16]   = "0.0.0.0";
+    char     ETH_MASK[16] = "0.0.0.0";
+    char     ETH_GW[16]   = "0.0.0.0";
+
 } g_cfg;
+
+static bool find_key(const char* body, const char* key, const char** val_start){
+    const char* p=strstr(body,key); if(!p) return false;
+    p=strchr(p,':'); if(!p) return false; p++;
+    while(*p==' '||*p=='\"'){ if(*p=='\"'){ *val_start=p; return true; } ++p; }
+    *val_start=p; return true;
+}
 
 static void json_cfg_print(char* buf, size_t sz, const EspCfg& c){
     snprintf(buf, sz,
@@ -250,19 +279,73 @@ static void json_cfg_print(char* buf, size_t sz, const EspCfg& c){
       "\"RX_ANT_DLY\":%d,"
       "\"BIAS_TICKS\":%d,"
       "\"PHY_CH\":%u,"
-      "\"PHY_SFDTO\":%u"
+      "\"PHY_SFDTO\":%u,"
+
+      "\"GW_ID\":%u,"
+
+      "\"ETH_MODE\":%u,"
+      "\"ETH_IP\":\"%s\","
+      "\"ETH_MASK\":\"%s\","
+      "\"ETH_GW\":\"%s\","
+
+      "\"ZONE_CTRL_IP\":\"%s\","
+      "\"ZONE_CTRL_PORT\":%u,"
+      "\"ZONE_CTRL_EN\":%u,"
+
+      "\"MAIN_IP\":\"%s\","
+      "\"MAIN_PORT\":%u,"
+      "\"MAIN_EN\":%u,"
+
+      "\"SERVICE_IP\":\"%s\","
+      "\"SERVICE_PORT\":%u,"
+      "\"SERVICE_EN\":%u"
       "}\n",
-      (unsigned)c.NETWORK_ID,(unsigned)c.ZONE_ID,(unsigned)c.ANCHOR_ID,
-      (unsigned)c.HB_MS,(unsigned)c.LOG_LEVEL,
-      (int)c.TX_ANT_DLY,(int)c.RX_ANT_DLY,(int)c.BIAS_TICKS,
-      (unsigned)c.PHY_CH,(unsigned)c.PHY_SFDTO);
+      (unsigned)c.NETWORK_ID,
+      (unsigned)c.ZONE_ID,
+      (unsigned)c.ANCHOR_ID,
+      (unsigned)c.HB_MS,
+      (unsigned)c.LOG_LEVEL,
+      (int)c.TX_ANT_DLY,
+      (int)c.RX_ANT_DLY,
+      (int)c.BIAS_TICKS,
+      (unsigned)c.PHY_CH,
+      (unsigned)c.PHY_SFDTO,
+
+      (unsigned)c.GW_ID,
+
+      (unsigned)c.ETH_MODE,
+      c.ETH_IP,
+      c.ETH_MASK,
+      c.ETH_GW,
+
+      c.ZONE_CTRL_IP,
+      (unsigned)c.ZONE_CTRL_PORT,
+      (unsigned)c.ZONE_CTRL_EN,
+
+      c.MAIN_IP,
+      (unsigned)c.MAIN_PORT,
+      (unsigned)c.MAIN_EN,
+
+      c.SERVICE_IP,
+      (unsigned)c.SERVICE_PORT,
+      (unsigned)c.SERVICE_EN
+    );
 }
-static bool find_key(const char* body, const char* key, const char** val_start){
-    const char* p=strstr(body,key); if(!p) return false;
-    p=strchr(p,':'); if(!p) return false; p++;
-    while(*p==' '||*p=='\"'){ if(*p=='\"'){ *val_start=p; return true; } ++p; }
-    *val_start=p; return true;
+
+static bool parse_str(const char* body, const char* key, char* out, size_t out_sz){
+    const char* v = nullptr;
+    if (!find_key(body, key, &v)) return false;
+    if (*v != '\"') return false;
+    v++; // idézőjel után
+    const char* end = strchr(v, '\"');
+    if (!end) return false;
+    size_t len = (size_t)(end - v);
+    if (len >= out_sz) len = out_sz - 1;
+    memcpy(out, v, len);
+    out[len] = 0;
+    return true;
 }
+
 static bool parse_u32(const char* body, const char* key, uint32_t& out){
     const char* v=nullptr; if(!find_key(body,key,&v)) return false; char* end=nullptr;
     if(*v=='\"') out=strtoul(v+1,&end,16); else out=strtoul(v,&end,10); return true;
@@ -278,16 +361,23 @@ static bool parse_u8 (const char* body, const char* key, uint8_t&  out){ uint32_
 static esp_err_t api_config_get(httpd_req_t* req){
     if(!require_role(req, ROLE_BLE)) return ESP_FAIL;
     add_cors(req); add_no_cache(req);
-    char buf[256]; json_cfg_print(buf,sizeof(buf),g_cfg);
+    char buf[512]; json_cfg_print(buf,sizeof(buf),g_cfg);
     httpd_resp_set_type(req,"application/json");
     return httpd_resp_send(req, buf, strlen(buf));
 }
+
 static esp_err_t api_config_post(httpd_req_t* req){
     if(!require_role(req, ROLE_BLE)) return ESP_FAIL;
     add_cors(req); add_no_cache(req);
     int len=req->content_len; if(len<=0) return httpd_resp_send_err(req,HTTPD_400_BAD_REQUEST,"empty");
     std::vector<char> body(len+1,0); int off=0;
-    while(off<len){ int r=httpd_req_recv(req,body.data()+off,len-off); if(r<=0) return httpd_resp_send_err(req,HTTPD_500_INTERNAL_SERVER_ERROR,"recv"); off+=r; }
+    while(off<len){
+        int r=httpd_req_recv(req,body.data()+off,len-off);
+        if(r<=0) return httpd_resp_send_err(req,HTTPD_500_INTERNAL_SERVER_ERROR,"recv");
+        off+=r;
+    }
+
+    // meglévők
     parse_u16(body.data(),"\"NETWORK_ID\"",g_cfg.NETWORK_ID);
     parse_u16(body.data(),"\"ZONE_ID\""   ,g_cfg.ZONE_ID);
     { uint32_t t; if(parse_u32(body.data(),"\"ANCHOR_ID\"",t)) g_cfg.ANCHOR_ID=t; }
@@ -298,6 +388,27 @@ static esp_err_t api_config_post(httpd_req_t* req){
     parse_i32(body.data(),"\"BIAS_TICKS\"",g_cfg.BIAS_TICKS);
     parse_u8 (body.data(),"\"PHY_CH\""    ,g_cfg.PHY_CH);
     parse_u16(body.data(),"\"PHY_SFDTO\"" ,g_cfg.PHY_SFDTO);
+
+    // ÚJ: GW + 3 IP csoport
+    parse_u32(body.data(),"\"GW_ID\"", g_cfg.GW_ID);
+
+    parse_u8 (body.data(),"\"ETH_MODE\"", g_cfg.ETH_MODE);
+    parse_str(body.data(),"\"ETH_IP\"",   g_cfg.ETH_IP,   sizeof(g_cfg.ETH_IP));
+    parse_str(body.data(),"\"ETH_MASK\"", g_cfg.ETH_MASK, sizeof(g_cfg.ETH_MASK));
+    parse_str(body.data(),"\"ETH_GW\"",   g_cfg.ETH_GW,   sizeof(g_cfg.ETH_GW));
+
+    parse_str(body.data(),"\"ZONE_CTRL_IP\"",   g_cfg.ZONE_CTRL_IP,   sizeof(g_cfg.ZONE_CTRL_IP));
+    parse_u16(body.data(),"\"ZONE_CTRL_PORT\"", g_cfg.ZONE_CTRL_PORT);
+    parse_u8 (body.data(),"\"ZONE_CTRL_EN\"",   g_cfg.ZONE_CTRL_EN);
+
+    parse_str(body.data(),"\"MAIN_IP\"",   g_cfg.MAIN_IP,   sizeof(g_cfg.MAIN_IP));
+    parse_u16(body.data(),"\"MAIN_PORT\"", g_cfg.MAIN_PORT);
+    parse_u8 (body.data(),"\"MAIN_EN\"",   g_cfg.MAIN_EN);
+
+    parse_str(body.data(),"\"SERVICE_IP\"",   g_cfg.SERVICE_IP,   sizeof(g_cfg.SERVICE_IP));
+    parse_u16(body.data(),"\"SERVICE_PORT\"", g_cfg.SERVICE_PORT);
+    parse_u8 (body.data(),"\"SERVICE_EN\"",   g_cfg.SERVICE_EN);
+
     httpd_resp_set_type(req,"application/json");
     return httpd_resp_sendstr(req,"{\"ok\":true}\n");
 }
