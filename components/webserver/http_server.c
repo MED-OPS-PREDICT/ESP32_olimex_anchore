@@ -364,7 +364,13 @@ static esp_err_t dwm_get_handler(httpd_req_t* req)
 
     // Alap kulcsok
     if(s_cfg.have[H_NETWORK_ID]) cJSON_AddNumberToObject(j,"NETWORK_ID", s_cfg.network_id);
-    if(s_cfg.have[H_ZONE_ID])    cJSON_AddNumberToObject(j,"ZONE_ID",    s_cfg.zone_id);
+    if (s_cfg.have[H_ZONE_ID]) {
+        cJSON_AddNumberToObject(j, "ZONE_ID", s_cfg.zone_id);
+
+        char hex[8];
+        snprintf(hex, sizeof hex, "0x%04X", s_cfg.zone_id);
+        cJSON_AddStringToObject(j, "ZONE_ID_HEX", hex);
+    }
     if(s_cfg.have[H_ANCHOR_ID]){ char hex[11]; snprintf(hex,sizeof hex,"0x%08" PRIX32,(uint32_t)s_cfg.anchor_id);
                                  cJSON_AddStringToObject(j,"ANCHOR_ID",hex); }
     if(s_cfg.have[H_HB_MS])      cJSON_AddNumberToObject(j,"HB_MS",      s_cfg.hb_ms);

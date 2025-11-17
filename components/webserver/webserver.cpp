@@ -14,6 +14,22 @@
 #include "esp_timer.h"
 #include "esp_system.h"
 #include "mbedtls/base64.h"
+#include "lwip/ip4_addr.h"
+#include "lwip/ip_addr.h"
+#include "nvs_flash.h"
+#include "nvs.h"
+
+#ifndef IPSTR
+#define IPSTR "%d.%d.%d.%d"
+#endif
+
+#ifndef IP2STR
+#define IP2STR(ipaddr) \
+    ip4_addr1_16(ipaddr), \
+    ip4_addr2_16(ipaddr), \
+    ip4_addr3_16(ipaddr), \
+    ip4_addr4_16(ipaddr)
+#endif
 
 #include "webserver.hpp"
 #include "globals.h"   // g_status, stb.
@@ -260,6 +276,93 @@ struct EspCfg {
 
 } g_cfg;
 
+/* ==== NVS kezelés az ESP confighoz (g_cfg) ==== */
+
+static const char* NVS_NS  = "cfg";
+static const char* NVS_KEY = "esp_cfg";
+
+static bool s_nvs_inited = false;
+
+static void ensure_nvs_init(void)
+{
+    if (s_nvs_inited) return;
+
+    esp_err_t err = nvs_flash_init();
+    if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        ESP_ERROR_CHECK(nvs_flash_erase());
+        err = nvs_flash_init();
+    }
+    if (err == ESP_OK) {
+        s_nvs_inited = true;
+        ESP_LOGI(TAG, "NVS init ok");
+    } else {
+        ESP_LOGW(TAG, "NVS init failed: 0x%x", err);
+    }
+}
+
+/* NVS -> g_cfg. true, ha sikerült valamit betölteni */
+static bool esp_cfg_load_from_nvs(void)
+{
+    ensure_nvs_init();
+    if (!s_nvs_inited) return false;
+
+    nvs_handle_t h;
+    esp_err_t err = nvs_open(NVS_NS, NVS_READONLY, &h);
+    if (err != ESP_OK) {
+        ESP_LOGI(TAG, "no cfg in NVS (open err=0x%x), using defaults", err);
+        return false;
+    }
+
+    size_t sz = 0;
+    err = nvs_get_blob(h, NVS_KEY, NULL, &sz);
+    if (err != ESP_OK || sz == 0 || sz > sizeof(EspCfg)) {
+        ESP_LOGW(TAG, "no/invalid blob (err=0x%x, sz=%u), using defaults",
+                 err, (unsigned)sz);
+        nvs_close(h);
+        return false;
+    }
+
+    /* induljunk a fordításkori defaultokból,
+       és csak a blob hosszáig írjuk felül */
+    EspCfg tmp = g_cfg;
+    err = nvs_get_blob(h, NVS_KEY, &tmp, &sz);
+    nvs_close(h);
+
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "nvs_get_blob err=0x%x, using defaults", err);
+        return false;
+    }
+
+    g_cfg = tmp;
+    ESP_LOGI(TAG, "EspCfg loaded from NVS (size=%u)", (unsigned)sz);
+    return true;
+}
+
+/* g_cfg -> NVS */
+static void esp_cfg_save_to_nvs(void)
+{
+    ensure_nvs_init();
+    if (!s_nvs_inited) return;
+
+    nvs_handle_t h;
+    esp_err_t err = nvs_open(NVS_NS, NVS_READWRITE, &h);
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "nvs_open write err=0x%x", err);
+        return;
+    }
+
+    err = nvs_set_blob(h, NVS_KEY, &g_cfg, sizeof(g_cfg));
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "nvs_set_blob err=0x%x", err);
+        nvs_close(h);
+        return;
+    }
+
+    nvs_commit(h);
+    nvs_close(h);
+    ESP_LOGI(TAG, "EspCfg saved to NVS (size=%u)", (unsigned)sizeof(g_cfg));
+}
+
 static bool find_key(const char* body, const char* key, const char** val_start){
     const char* p=strstr(body,key); if(!p) return false;
     p=strchr(p,':'); if(!p) return false; p++;
@@ -332,6 +435,10 @@ static void json_cfg_print(char* buf, size_t sz, const EspCfg& c){
     );
 }
 
+// forward deklarációk
+static void gcfg_from_globals(void);
+static void globals_from_gcfg(void);
+
 static bool parse_str(const char* body, const char* key, char* out, size_t out_sz){
     const char* v = nullptr;
     if (!find_key(body, key, &v)) return false;
@@ -366,73 +473,204 @@ static esp_err_t api_config_get(httpd_req_t* req){
     return httpd_resp_send(req, buf, strlen(buf));
 }
 
-static esp_err_t api_config_post(httpd_req_t* req){
-    if(!require_role(req, ROLE_BLE)) return ESP_FAIL;
-    add_cors(req); add_no_cache(req);
-    int len=req->content_len; if(len<=0) return httpd_resp_send_err(req,HTTPD_400_BAD_REQUEST,"empty");
-    std::vector<char> body(len+1,0); int off=0;
-    while(off<len){
-        int r=httpd_req_recv(req,body.data()+off,len-off);
-        if(r<=0) return httpd_resp_send_err(req,HTTPD_500_INTERNAL_SERVER_ERROR,"recv");
-        off+=r;
+static esp_err_t api_config_post(httpd_req_t* req)
+{
+    if (!require_role(req, ROLE_BLE)) return ESP_FAIL;
+
+    add_cors(req);
+    add_no_cache(req);
+
+    int len = req->content_len;
+    if (len <= 0) {
+        return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "empty");
     }
 
-    // meglévők
-    parse_u16(body.data(),"\"NETWORK_ID\"",g_cfg.NETWORK_ID);
-    parse_u16(body.data(),"\"ZONE_ID\""   ,g_cfg.ZONE_ID);
-    { uint32_t t; if(parse_u32(body.data(),"\"ANCHOR_ID\"",t)) g_cfg.ANCHOR_ID=t; }
-    parse_u16(body.data(),"\"HB_MS\""     ,g_cfg.HB_MS);
-    parse_u8 (body.data(),"\"LOG_LEVEL\"" ,g_cfg.LOG_LEVEL);
-    parse_i32(body.data(),"\"TX_ANT_DLY\"",g_cfg.TX_ANT_DLY);
-    parse_i32(body.data(),"\"RX_ANT_DLY\"",g_cfg.RX_ANT_DLY);
-    parse_i32(body.data(),"\"BIAS_TICKS\"",g_cfg.BIAS_TICKS);
-    parse_u8 (body.data(),"\"PHY_CH\""    ,g_cfg.PHY_CH);
-    parse_u16(body.data(),"\"PHY_SFDTO\"" ,g_cfg.PHY_SFDTO);
+    std::vector<char> body(len + 1, 0);
+    int off = 0;
+    while (off < len) {
+        int r = httpd_req_recv(req, body.data() + off, len - off);
+        if (r <= 0) {
+            return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "recv");
+        }
+        off += r;
+    }
+
+    // 1) JSON → g_cfg (csak a benne lévő kulcsok írják felül)
+    parse_u16(body.data(), "\"NETWORK_ID\"", g_cfg.NETWORK_ID);
+    parse_u16(body.data(), "\"ZONE_ID\""   , g_cfg.ZONE_ID);
+    {
+        uint32_t t;
+        if (parse_u32(body.data(), "\"ANCHOR_ID\"", t)) {
+            g_cfg.ANCHOR_ID = t;
+        }
+    }
+    parse_u16(body.data(), "\"HB_MS\""     , g_cfg.HB_MS);
+    parse_u8 (body.data(), "\"LOG_LEVEL\"" , g_cfg.LOG_LEVEL);
+    parse_i32(body.data(), "\"TX_ANT_DLY\"", g_cfg.TX_ANT_DLY);
+    parse_i32(body.data(), "\"RX_ANT_DLY\"", g_cfg.RX_ANT_DLY);
+    parse_i32(body.data(), "\"BIAS_TICKS\"", g_cfg.BIAS_TICKS);
+    parse_u8 (body.data(), "\"PHY_CH\""    , g_cfg.PHY_CH);
+    parse_u16(body.data(), "\"PHY_SFDTO\"" , g_cfg.PHY_SFDTO);
 
     // ÚJ: GW + 3 IP csoport
-    parse_u32(body.data(),"\"GW_ID\"", g_cfg.GW_ID);
+    parse_u32(body.data(), "\"GW_ID\"", g_cfg.GW_ID);
 
-    parse_u8 (body.data(),"\"ETH_MODE\"", g_cfg.ETH_MODE);
-    parse_str(body.data(),"\"ETH_IP\"",   g_cfg.ETH_IP,   sizeof(g_cfg.ETH_IP));
-    parse_str(body.data(),"\"ETH_MASK\"", g_cfg.ETH_MASK, sizeof(g_cfg.ETH_MASK));
-    parse_str(body.data(),"\"ETH_GW\"",   g_cfg.ETH_GW,   sizeof(g_cfg.ETH_GW));
+    parse_u8 (body.data(), "\"ETH_MODE\"", g_cfg.ETH_MODE);
+    parse_str(body.data(), "\"ETH_IP\""   , g_cfg.ETH_IP,   sizeof(g_cfg.ETH_IP));
+    parse_str(body.data(), "\"ETH_MASK\"" , g_cfg.ETH_MASK, sizeof(g_cfg.ETH_MASK));
+    parse_str(body.data(), "\"ETH_GW\""   , g_cfg.ETH_GW,   sizeof(g_cfg.ETH_GW));
 
-    parse_str(body.data(),"\"ZONE_CTRL_IP\"",   g_cfg.ZONE_CTRL_IP,   sizeof(g_cfg.ZONE_CTRL_IP));
-    parse_u16(body.data(),"\"ZONE_CTRL_PORT\"", g_cfg.ZONE_CTRL_PORT);
-    parse_u8 (body.data(),"\"ZONE_CTRL_EN\"",   g_cfg.ZONE_CTRL_EN);
+    parse_str(body.data(), "\"ZONE_CTRL_IP\""  , g_cfg.ZONE_CTRL_IP,   sizeof(g_cfg.ZONE_CTRL_IP));
+    parse_u16(body.data(), "\"ZONE_CTRL_PORT\"", g_cfg.ZONE_CTRL_PORT);
+    parse_u8 (body.data(), "\"ZONE_CTRL_EN\""  , g_cfg.ZONE_CTRL_EN);
 
-    parse_str(body.data(),"\"MAIN_IP\"",   g_cfg.MAIN_IP,   sizeof(g_cfg.MAIN_IP));
-    parse_u16(body.data(),"\"MAIN_PORT\"", g_cfg.MAIN_PORT);
-    parse_u8 (body.data(),"\"MAIN_EN\"",   g_cfg.MAIN_EN);
+    parse_str(body.data(), "\"MAIN_IP\""   , g_cfg.MAIN_IP,   sizeof(g_cfg.MAIN_IP));
+    parse_u16(body.data(), "\"MAIN_PORT\"", g_cfg.MAIN_PORT);
+    parse_u8 (body.data(), "\"MAIN_EN\""  , g_cfg.MAIN_EN);
 
-    parse_str(body.data(),"\"SERVICE_IP\"",   g_cfg.SERVICE_IP,   sizeof(g_cfg.SERVICE_IP));
-    parse_u16(body.data(),"\"SERVICE_PORT\"", g_cfg.SERVICE_PORT);
-    parse_u8 (body.data(),"\"SERVICE_EN\"",   g_cfg.SERVICE_EN);
+    parse_str(body.data(), "\"SERVICE_IP\""  , g_cfg.SERVICE_IP,   sizeof(g_cfg.SERVICE_IP));
+    parse_u16(body.data(), "\"SERVICE_PORT\"", g_cfg.SERVICE_PORT);
+    parse_u8 (body.data(), "\"SERVICE_EN\""  , g_cfg.SERVICE_EN);
 
-    httpd_resp_set_type(req,"application/json");
-    return httpd_resp_sendstr(req,"{\"ok\":true}\n");
+    // 2) g_cfg → NET / IPS (rendszer-szintű módosítások)
+    globals_from_gcfg();
+
+    // 3) tartós mentés NVS-be
+    esp_cfg_save_to_nvs();
+
+    httpd_resp_set_type(req, "application/json");
+    return httpd_resp_sendstr(req, "{\"ok\":true}\n");
+
+}
+
+/* NET, IPS -> g_cfg (UI tükör) */
+static void gcfg_from_globals(void)
+{
+    // saját IP
+    snprintf(g_cfg.ETH_IP,   sizeof(g_cfg.ETH_IP),   IPSTR, IP2STR(&NET.ip));
+    snprintf(g_cfg.ETH_MASK, sizeof(g_cfg.ETH_MASK), IPSTR, IP2STR(&NET.mask));
+    snprintf(g_cfg.ETH_GW,   sizeof(g_cfg.ETH_GW),   IPSTR, IP2STR(&NET.gw));
+    g_cfg.ETH_MODE = NET.use_dhcp ? 0 : 1;
+
+    // IPS célok → ZONE / MAIN / SERVICE
+    snprintf(g_cfg.ZONE_CTRL_IP, sizeof(g_cfg.ZONE_CTRL_IP),
+             IPSTR, IP2STR(&IPS.dest[0].dest_ip));
+    g_cfg.ZONE_CTRL_PORT = IPS.dest[0].dest_port;
+    g_cfg.ZONE_CTRL_EN   = IPS.dest[0].enabled;
+
+    snprintf(g_cfg.MAIN_IP, sizeof(g_cfg.MAIN_IP),
+             IPSTR, IP2STR(&IPS.dest[1].dest_ip));
+    g_cfg.MAIN_PORT = IPS.dest[1].dest_port;
+    g_cfg.MAIN_EN   = IPS.dest[1].enabled;
+
+    snprintf(g_cfg.SERVICE_IP, sizeof(g_cfg.SERVICE_IP),
+             IPSTR, IP2STR(&IPS.dest[2].dest_ip));
+    g_cfg.SERVICE_PORT = IPS.dest[2].dest_port;
+    g_cfg.SERVICE_EN   = IPS.dest[2].enabled;
+
+    g_cfg.GW_ID = IPS.gw_id;
+}
+
+/* backwards kompat: ha máshol is hívják */
+static void sync_cfg_from_globals(void)
+{
+    gcfg_from_globals();
+}
+
+/* g_cfg -> NET, IPS (rendszer-szintű beállítás) */
+static void globals_from_gcfg(void)
+{
+    NET.use_dhcp = (g_cfg.ETH_MODE == 0);  // 0 = DHCP, 1 = statikus
+
+    ip4addr_aton(g_cfg.ETH_IP,   &NET.ip);
+    ip4addr_aton(g_cfg.ETH_MASK, &NET.mask);
+    ip4addr_aton(g_cfg.ETH_GW,   &NET.gw);
+
+    IPS.gw_id = g_cfg.GW_ID;
+
+    ip4addr_aton(g_cfg.ZONE_CTRL_IP, &IPS.dest[0].dest_ip);
+    IPS.dest[0].dest_port = g_cfg.ZONE_CTRL_PORT;
+    IPS.dest[0].enabled   = g_cfg.ZONE_CTRL_EN;
+
+    ip4addr_aton(g_cfg.MAIN_IP, &IPS.dest[1].dest_ip);
+    IPS.dest[1].dest_port = g_cfg.MAIN_PORT;
+    IPS.dest[1].enabled   = g_cfg.MAIN_EN;
+
+    ip4addr_aton(g_cfg.SERVICE_IP, &IPS.dest[2].dest_ip);
+    IPS.dest[2].dest_port = g_cfg.SERVICE_PORT;
+    IPS.dest[2].enabled   = g_cfg.SERVICE_EN;
 }
 
 /* ================= /api/status ================= */
+extern net_config_t NET;
+extern ips_config_t IPS;
+extern volatile int eth_up;   // ha máshol nem kell, ezt akár el is hagyhatod
+extern volatile int ble_up;
+
 static esp_err_t api_status_get(httpd_req_t* req){
-    add_cors(req); add_no_cache(req);
-    const char* st = (g_status.state==ST_OK?"ok":g_status.state==ST_WARN?"warn":g_status.state==ST_ERR?"err":"off");
-    char buf[128];
-    int n=snprintf(buf,sizeof(buf),
-        "{\"anchor\":\"%s\",\"id\":%u,\"last_s\":%.2f,\"last_v\":%.2f,\"state\":\"%s\"}\n",
-        g_status.anchor,g_status.id,g_status.last_meas_s,g_status.last_volt,st);
+    add_cors(req);
+    add_no_cache(req);
+
+    const char* st = (g_status.state==ST_OK   ? "ok"   :
+                      g_status.state==ST_WARN ? "warn" :
+                      g_status.state==ST_ERR  ? "err"  : "off");
+
+    // ETH akkor "up", ha már nem 0.0.0.0 az IP
+    bool eth_ok = (NET.ip.addr != 0);
+
+    char buf[256];
+    int n = snprintf(buf, sizeof(buf),
+        "{"
+          "\"anchor\":\"%s\","
+          "\"id\":%u,"
+          "\"last_s\":%.2f,"
+          "\"last_v\":%.2f,"
+          "\"state\":\"%s\","
+          "\"eth_up\":%d,"
+          "\"ble_up\":%d,"
+          "\"zone_en\":%u,"
+          "\"main_en\":%u,"
+          "\"service_en\":%u"
+        "}\n",
+        g_status.anchor,
+        g_status.id,
+        g_status.last_meas_s,
+        g_status.last_volt,
+        st,
+        eth_ok ? 1 : 0,
+        ble_up,
+        (unsigned)IPS.dest[0].enabled,
+        (unsigned)IPS.dest[1].enabled,
+        (unsigned)IPS.dest[2].enabled
+    );
+
     httpd_resp_set_type(req,"application/json");
-    return httpd_resp_send(req,buf,n);
+    return httpd_resp_send(req, buf, n);
 }
 
 /* ================= Server start/stop ================= */
 esp_err_t webserver_start(){
     if (s_http) return ESP_OK;
 
+    /* 1) próbáljuk NVS-ből betölteni az ESP configot */
+    bool have_nvs_cfg = esp_cfg_load_from_nvs();
+
+    if (have_nvs_cfg) {
+        /* 2a) ha volt mentett cfg, azt tekintjük igaznak:
+               g_cfg -> NET/IPS */
+        globals_from_gcfg();
+    } else {
+        /* 2b) ha nincs NVS, indulunk a compile-time default NET/IPS-ből,
+               és abból gyártunk g_cfg-et a UI-nak */
+        gcfg_from_globals();
+        /* opcionális: ezt az alapot is elmentheted NVS-be, ha szeretnéd */
+        // esp_cfg_save_to_nvs();
+    }
+
     httpd_config_t cfg = HTTPD_DEFAULT_CONFIG();
     cfg.uri_match_fn = httpd_uri_match_wildcard;
     cfg.max_uri_handlers = 24;
-    cfg.stack_size = 8192;      // nagyobb stack
+    cfg.stack_size = 8192;
 
     ESP_ERROR_CHECK(httpd_start(&s_http, &cfg));
 

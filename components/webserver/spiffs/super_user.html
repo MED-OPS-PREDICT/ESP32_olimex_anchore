@@ -200,14 +200,14 @@
     .cfg-table col.col-new  { width:25%; }
 
     /* 1. kártya: közös (ESP + DWM) – itt legyen széles a kulcs, két vékony érték, közepes új érték */
-    #tblBase col.col-key  { width:42%; }
-    #tblBase col.col-esp  { width:13%; }
-    #tblBase col.col-dwm  { width:13%; }
+    #tblBase col.col-key  { width:28%; }
+    #tblBase col.col-esp  { width:15%; }
+    #tblBase col.col-dwm  { width:15%; }
     #tblBase col.col-new  { width:32%; }
 
     /* 2. kártya: ESP konfiguráció – Kulcs nagy, ESP közepes, Új érték nagyobb */
-    #tblIps  col.col-key  { width:50%; }
-    #tblIps  col.col-esp  { width:15%; }
+    #tblIps  col.col-key  { width:40%; }
+    #tblIps  col.col-esp  { width:25%; }
     #tblIps  col.col-new  { width:35%; }
 
     /* 3. kártya: DWM konfiguráció – Kulcs közepes, DWM közepes, Új érték nagyobb */
@@ -255,16 +255,22 @@
 <div class="wrap">
   <div id="warn" class="mono"></div>
 
-  <!-- DWM kapcsolat kártya – teljes szélesség -->
-  <section class="card full">
-    <div class="hd">
-      <div class="hd-title">
-        <span>DWM kapcsolat</span>
-        <small>UUID-k, Req ID, soros log megnyitása</small>
+    <!-- DWM kapcsolat kártya – teljes szélesség -->
+    <section class="card full">
+      <div class="hd">
+        <div class="hd-title">
+          <span>Kapcsolati állapot</span>
+          <small>BLE + IP célok elérhetősége</small>
+        </div>
+        <div class="toolbar">
+          <span id="pillBle"    class="pill warn">BLE: ismeretlen</span>
+          <span id="pillEth"    class="pill warn">ETH: ismeretlen</span>
+          <span id="pillZone"   class="pill warn">Zóna vezérlő: ismeretlen</span>
+          <span id="pillMain"   class="pill warn">Fő szerver: ismeretlen</span>
+          <span id="pillServ"   class="pill warn">Service: ismeretlen</span>
+        </div>
       </div>
-      <div id="statusPill" class="pill err">Nincs kapcsolat</div>
-    </div>
-    <div class="bd">
+      <div class="bd">
       <div class="form-grid">
         <label>Szolgáltatás UUID</label>
         <input class="inp" id="svcUuid" value="12345678-1234-5678-1234-1234567890ab">
@@ -284,8 +290,6 @@
           <button class="btn ghost" id="btnOpenSerial">Soros megnyitása</button>
         </div>
 
-        <label>ACK</label>
-        <div id="ack" class="mono muted">-</div>
       </div>
     </div>
   </section>
@@ -297,12 +301,10 @@
     <section class="card cfg-card">
       <div class="hd">
         <div class="hd-title">
-          <span>Közös konfiguráció (ESP + DWM)</span>
-          <small>Hálózat, zóna, anchor, log, antenna, alap PHY</small>
+          <span>Közös konfiguráció </span>
+          <small>(ESP + DWM)</small>
         </div>
         <div class="toolbar">
-          <button class="btn ghost" id="btnEspGet">LEKÉR ESP</button>
-          <button class="btn ghost" id="btnDwmGet">LEKÉR DWM</button>
           <button class="btn" id="btnApply">Beállít (ESP + DWM)</button>
         </div>
       </div>
@@ -333,6 +335,9 @@
           <span>ESP konfiguráció</span>
           <small>Ethernet, saját IP, gateway, IPS cél IP-k</small>
         </div>
+        <div class="toolbar">
+          <button class="btn ghost" id="btnEspGet">LEKÉR ESP</button>
+        </div>
       </div>
       <div class="bd">
         <div class="sec-title">Ethernet és cél IP-k:</div>
@@ -358,6 +363,9 @@
         <div class="hd-title">
           <span>DWM konfiguráció</span>
           <small>Szinkron és PHY paraméterek</small>
+        </div>
+        <div class="toolbar">
+          <button class="btn ghost" id="btnDwmGet">LEKÉR DWM</button>
         </div>
       </div>
       <div class="bd">
@@ -385,7 +393,7 @@
               <col class="col-new">
             </colgroup>
             <thead>
-              <tr><th>Kulcs</th><th>ESP</th><th>DWM</th><th>Új érték</th></tr>
+              <tr><th>Kulcs</th><th>DWM</th><th>Új érték</th></tr>
             </thead>
             <tbody></tbody>
           </table>
@@ -428,12 +436,6 @@ function logln(s){
   }
   console.log(s);
   slog(s);
-}
-function setPill(ok, txt){
-  const p = $('statusPill');
-  if(!p) return;
-  p.textContent = txt || (ok ? 'Csatlakozva' : 'Nincs kapcsolat');
-  p.className   = 'pill ' + (ok ? 'ok' : 'err');
 }
 
 /* ===== Secure Context ellenőrzés ===== */
@@ -519,6 +521,19 @@ const GROUPS = {
   ]
 };
 
+function fmtZoneIdHex(v) {
+  if (v == null) return "";
+  if (typeof v === "string" && v.startsWith("0x")) {
+    // normalize: nagybetű, 4 számjegy
+    const n = parseInt(v, 16);
+    if (!Number.isFinite(n)) return "";
+    return "0x" + n.toString(16).toUpperCase().padStart(4, "0");
+  }
+  const n = Number(v);
+  if (!Number.isFinite(n)) return "";
+  return "0x" + n.toString(16).toUpperCase().padStart(4, "0");
+}
+
 function cell(v){
   return `<td class="mono">${v===undefined||v===null?'-':v}</td>`;
 }
@@ -539,14 +554,35 @@ function renderGroup(tblId, items, cfg){
       return `<tr><td colspan="${colSpan}" class="muted" style="padding-top:10px;font-weight:600;">${it.hdr}</td></tr>`;
     }
 
-    const key   = it.k;
-    const label = it.label || key;
-    const esp   = (g.esp && g.esp[key] !== undefined) ? g.esp[key] : '-';
-    const dwm   = (g.dwm && g.dwm[key] !== undefined) ? g.dwm[key] : '-';
+const key   = it.k;
+const label = it.label || key;
+let esp = (g.esp && g.esp[key] !== undefined) ? g.esp[key] : '-';
+let dwm = (g.dwm && g.dwm[key] !== undefined) ? g.dwm[key] : '-';
 
-    const input = it.edit
-      ? `<input class="inp" id="in_${key}" placeholder="új érték">`
-      : `<input class="inp" id="in_${key}" placeholder="nem írható" disabled>`;
+// ZONE_ID: hex formázás a megjelenítéshez
+if (key === 'ZONE_ID') {
+  if (esp !== '-' && esp != null) {
+    esp = fmtZoneIdHex(esp);
+  }
+
+  let src = null;
+  if (g.dwm) {
+    if (g.dwm.ZONE_ID_HEX) src = g.dwm.ZONE_ID_HEX;
+    else if (g.dwm.ZONE_ID !== undefined) src = g.dwm.ZONE_ID;
+  }
+  if (src != null) dwm = fmtZoneIdHex(src);
+  else dwm = '-';
+}
+
+// placeholder – ZONE_ID-nek hex minta
+let placeholder = 'új érték';
+if (key === 'ZONE_ID') {
+  placeholder = '0x1234';
+}
+
+const input = it.edit
+  ? `<input class="inp mono" id="in_${key}" placeholder="${placeholder}">`
+  : `<input class="inp" id="in_${key}" placeholder="nem írható" disabled>`;
 
     const cells = [];
     cells.push(`<td>${label}</td>`);
@@ -628,12 +664,35 @@ function gatherInputs(){
       if (!it.k) continue;
       const el = $('in_'+it.k);
       if(!el || el.disabled) continue;
-      const v = el.value.trim();
+      let v = el.value.trim();
       if(v === '') continue;
 
-      const dest = it.to || 'both';
-      if (dest === 'esp'  || dest === 'both') outEsp[it.k] = v;
-      if (dest === 'dwm'  || dest === 'both') outDwm[it.k] = v;
+        if (it.k === 'ZONE_ID') {
+          // ha nem 0x-szel kezdődik, próbáljuk decimálisból konvertálni
+          if (!/^0x[0-9a-fA-F]+$/.test(v)) {
+            const n = Number(v);
+            if (!Number.isFinite(n)) {
+              alert('Hibás ZONE_ID: ' + v);
+              return null; // jelezz hibát a hívónak
+            }
+            v = '0x' + n.toString(16).toUpperCase().padStart(4, '0');
+          } else {
+            // 0x-szel kezdődik, normalizáljuk
+            const n = parseInt(v, 16);
+            if (!Number.isFinite(n)) {
+              alert('Hibás ZONE_ID: ' + v);
+              return null;
+            }
+            v = '0x' + n.toString(16).toUpperCase().padStart(4, '0');
+          }
+          // input mezőbe is visszaírjuk normalizálva
+          el.value = v;
+        }
+
+        const dest = it.to || 'both';
+        if (dest === 'esp'  || dest === 'both') outEsp[it.k] = v;
+        if (dest === 'dwm'  || dest === 'both') outDwm[it.k] = v;
+
     }
   }
   return { esp: outEsp, dwm: outDwm };
@@ -644,7 +703,9 @@ async function doSetBoth(){
   setBusy(true);
 
   try {
-    const { esp: inpEsp, dwm: inpDwm } = gatherInputs();
+    const res = gatherInputs();
+    if (!res) { setBusy(false); return; }
+    const { esp: inpEsp, dwm: inpDwm } = res;
 
     if (Object.keys(inpEsp).length === 0 && Object.keys(inpDwm).length === 0) {
       logln('[SET] nincs módosítás');
@@ -695,12 +756,6 @@ function setBusy(b){
   }
 }
 
-/* ===== BLE csatlakozás (jelenleg nincs használva) ===== */
-function connect(){
-  logln('[BLE] kikapcsolva');
-  setPill(false,'Nincs kapcsolat');
-}
-
 /* ===== Web Serial ===== */
 let serialReader = null;
 
@@ -736,13 +791,56 @@ async function openSerial(){
     logln('[SERIAL] nyitási hiba: '+e);
   }
 }
+function setPillEl(id, level, txt) {
+  const el = $(id);
+  if (!el) return;
+  let cls = 'pill ';
+  if (level === 'ok')    cls += 'ok';
+  else if (level === 'warn') cls += 'warn';
+  else cls += 'err';
+  el.className = cls;
+  el.textContent = txt;
+}
+
+async function refreshStatus() {
+  try {
+    const r = await fetch('/api/status', { cache:'no-store' });
+    if (!r.ok) throw new Error('HTTP '+r.status);
+    const s = await r.json();
+
+    // BLE állapot – a backendben bevezetett ble_up alapján
+    if (s.ble_up) {
+      setPillEl('pillBle', 'ok',  'BLE: csatlakozva');
+    } else {
+      setPillEl('pillBle', 'err', 'BLE: nincs kapcsolat');
+    }
+
+    // ETH link
+    setPillEl('pillEth', s.eth_up ? 'ok' : 'err',
+              s.eth_up ? 'ETH: fel' : 'ETH: nincs link');
+
+    // cél IP-k engedélyezettsége
+    setPillEl('pillZone',  s.zone_en    ? 'ok' : 'warn',
+              'Zóna vezérlő: ' + (s.zone_en    ? 'engedélyezve' : 'tiltva'));
+    setPillEl('pillMain',  s.main_en    ? 'ok' : 'warn',
+              'Fő szerver: ' + (s.main_en    ? 'engedélyezve' : 'tiltva'));
+    setPillEl('pillServ',  s.service_en ? 'ok' : 'warn',
+              'Service: '    + (s.service_en ? 'engedélyezve' : 'tiltva'));
+
+  } catch(e) {
+    logln('[STATUS] hiba: ' + e.message);
+    setPillEl('pillBle', 'err', 'BLE: hiba');
+  }
+}
+
+// induláskor + időszakosan
+refreshStatus();
+setInterval(refreshStatus, 5000);
 
 /* ===== események ===== */
-$('btnConnect'   ).addEventListener('click', connect);
 $('btnDwmGet'    ).addEventListener('click', doDwmGet);
 $('btnEspGet'    ).addEventListener('click', doEspGet);
 $('btnApply'     ).addEventListener('click', doSetBoth);
-$('btnOpenSerial').addEventListener('click', openSerial);
 
 renderAll();
 </script>

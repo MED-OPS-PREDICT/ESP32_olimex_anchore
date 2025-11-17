@@ -26,7 +26,8 @@ static esp_gatt_if_t g_gattc_if = 0xFE;
 static uint16_t      g_conn_id  = 0xFFFF;
 static esp_bd_addr_t g_peer_bda = {0};
 static esp_ble_addr_type_t g_peer_addr_type = BLE_ADDR_TYPE_PUBLIC;
-static bool          g_connected = false;
+static bool g_connected = false;
+volatile int ble_up = 0;
 
 static uint16_t g_start_handle=0, g_end_handle=0;
 static uint16_t g_data_h=0, g_cfg_h=0;
@@ -538,6 +539,7 @@ static void gattc_cb(esp_gattc_cb_event_t e, esp_gatt_if_t gattc_if, esp_ble_gat
             g_connecting = false;
             g_conn_id = p->open.conn_id;
             g_connected = true;
+            ble_up = 1;
             reset_gatt_state();
             rx_reset();
             ESP_LOGI(TAG, "connected, conn_id=%u", g_conn_id);
@@ -546,6 +548,7 @@ static void gattc_cb(esp_gattc_cb_event_t e, esp_gatt_if_t gattc_if, esp_ble_gat
         } else {
             ESP_LOGW(TAG, "open failed 0x%x; restart scan", p->open.status);
             g_connecting = false;
+            ble_up = 0;
             vTaskDelay(pdMS_TO_TICKS(200));
             start_scan_safe(0);
         }
@@ -670,6 +673,7 @@ static void gattc_cb(esp_gattc_cb_event_t e, esp_gatt_if_t gattc_if, esp_ble_gat
         ESP_LOGW(TAG, "gattc closed; status=0x%x", p->close.status);
         g_connected = false;
         g_connecting = false;
+        ble_up = 0;
         rx_reset();
         reset_gatt_state();
         vTaskDelay(pdMS_TO_TICKS(100));
@@ -680,6 +684,7 @@ static void gattc_cb(esp_gattc_cb_event_t e, esp_gatt_if_t gattc_if, esp_ble_gat
         ESP_LOGW(TAG, "disconnected; reason=0x%x", p->disconnect.reason);
         g_connected = false;
         g_connecting = false;
+        ble_up = 0;
         rx_reset();
         reset_gatt_state();
         vTaskDelay(pdMS_TO_TICKS(100));
