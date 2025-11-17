@@ -13,6 +13,8 @@
 #include "globals.h"      // IPS
 #include "aes_sender.h"
 
+#include "lwip/ip4_addr.h"
+
 static const char *TAG = "AES_SENDER";
 
 static int s_sock = -1;
@@ -149,7 +151,15 @@ void aes_sender_send_line(const char *line)
         return;
     }
 
-    /* IPS globál (globals.h-ból) */
+    // DEBUG: plaintext + kimenő titkosított csomag kiírása
+    ESP_LOGI(TAG, "PLAINTEXT len=%u: \"%.*s\"",
+             (unsigned)plain_len, (int)plain_len, line);
+
+    // ha van: esp_log_buffer_hex vagy esp_log_buffer_hexdump
+    esp_log_buffer_hex(TAG, buf, enc_len);
+    // vagy:
+    // esp_log_buffer_hexdump(TAG, buf, enc_len, ESP_LOG_INFO);
+
     extern ips_config_t IPS;
 
     for (int i = 0; i < 3; ++i) {
@@ -161,7 +171,18 @@ void aes_sender_send_line(const char *line)
         memset(&sa, 0, sizeof(sa));
         sa.sin_family      = AF_INET;
         sa.sin_port        = htons(IPS.dest[i].dest_port);
-        sa.sin_addr.s_addr = IPS.dest[i].dest_ip.addr;   // már network-order
+        sa.sin_addr.s_addr = IPS.dest[i].dest_ip.addr;
+
+        ESP_LOGI(TAG,
+                 "sendto idx=%d %d.%d.%d.%d:%u len=%u",
+                 i,
+                 ip4_addr1_16(&IPS.dest[i].dest_ip),
+                 ip4_addr2_16(&IPS.dest[i].dest_ip),
+                 ip4_addr3_16(&IPS.dest[i].dest_ip),
+                 ip4_addr4_16(&IPS.dest[i].dest_ip),
+                 (unsigned)IPS.dest[i].dest_port,
+                 (unsigned)enc_len);
+
 
         int sent = sendto(s_sock, buf, enc_len, 0,
                           (struct sockaddr *)&sa, sizeof(sa));
