@@ -1,99 +1,172 @@
-#include "aes_sender.h"
-#include "esp_log.h"
-#include "nvs_flash.h"
-#include "nvs.h"
-#include "mbedtls/aes.h"
-#include "esp_random.h"
 #include <string.h>
+#include <stdio.h>
+
+#include "esp_log.h"
+#include "esp_timer.h"
+
+#include "lwip/sockets.h"
+#include "lwip/inet.h"
+#include "lwip/ip_addr.h"
+
+#include "mbedtls/aes.h"
+
+#include "globals.h"      // IPS
+#include "aes_sender.h"
 
 static const char *TAG = "AES_SENDER";
 
-static uint8_t aes_key[AES_KEY_SIZE];
+static int s_sock = -1;
 
-// Belső: kulcs betöltése NVS-ből
-static void load_key_from_nvs(void)
+static uint8_t s_key[16];
+static bool    s_key_set = false;
+static mbedtls_aes_context s_aes;
+
+/* --------- segéd: UDP socket --------- */
+
+static void ensure_socket(void)
 {
-    nvs_handle_t nvs;
-    esp_err_t err = nvs_open("sec", NVS_READONLY, &nvs);
-
-    if (err != ESP_OK) {
-        ESP_LOGW(TAG, "NVS no-key, using default test key.");
-        memset(aes_key, 0x11, AES_KEY_SIZE); // DEFAULT kulcs
+    if (s_sock >= 0) {
         return;
     }
 
-    size_t size = AES_KEY_SIZE;
-    err = nvs_get_blob(nvs, "aes_key", aes_key, &size);
-    nvs_close(nvs);
-
-    if (err == ESP_OK && size == AES_KEY_SIZE) {
-        ESP_LOGI(TAG, "AES key loaded from NVS.");
-    } else {
-        ESP_LOGW(TAG, "No valid AES key, using default.");
-        memset(aes_key, 0x11, AES_KEY_SIZE); // DEFAULT kulcs
+    s_sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
+    if (s_sock < 0) {
+        ESP_LOGE(TAG, "socket() failed");
+        return;
     }
+
+    struct timeval tv = {
+        .tv_sec  = 0,
+        .tv_usec = 200000   // 200 ms send timeout
+    };
+    setsockopt(s_sock, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
 }
+
+/* --------- segéd: AES-CTR titkosítás --------- */
+
+static bool encrypt_ctr(const uint8_t *plaintext, size_t len,
+                        uint8_t *out_buf, size_t out_buf_size,
+                        size_t *out_len)
+{
+    /* out_buf = [16B IV][ciphertext...] */
+    if (out_buf_size < len + 16) {
+        return false;
+    }
+
+    uint8_t iv[16] = {0};
+
+    /* IV első 8 byte: timestamp (us) big-endian */
+    uint64_t now_us = (uint64_t)esp_timer_get_time();
+    for (int i = 0; i < 8; ++i) {
+        iv[7 - i] = (now_us >> (8 * i)) & 0xFF;
+    }
+
+    memcpy(out_buf, iv, 16);
+
+    uint8_t stream_block[16];
+    size_t nc_off = 0;
+
+    int ret = mbedtls_aes_crypt_ctr(&s_aes,
+                                    len,
+                                    &nc_off,
+                                    iv,
+                                    stream_block,
+                                    plaintext,
+                                    out_buf + 16);
+    if (ret != 0) {
+        ESP_LOGE(TAG, "mbedtls_aes_crypt_ctr ret=%d", ret);
+        return false;
+    }
+
+    *out_len = len + 16;
+    return true;
+}
+
+/* --------- publikus API --------- */
 
 void aes_sender_init(void)
 {
-    load_key_from_nvs();
+    ensure_socket();
+    mbedtls_aes_init(&s_aes);
 }
 
-bool aes_set_key(const uint8_t *new_key, size_t len)
+/* hex → 16 byte kulcs */
+static int hex_val(char c)
 {
-    if (len != AES_KEY_SIZE) return false;
-
-    memcpy(aes_key, new_key, AES_KEY_SIZE);
-
-    nvs_handle_t nvs;
-    ESP_ERROR_CHECK(nvs_open("sec", NVS_READWRITE, &nvs));
-    ESP_ERROR_CHECK(nvs_set_blob(nvs, "aes_key", new_key, AES_KEY_SIZE));
-    ESP_ERROR_CHECK(nvs_commit(nvs));
-    nvs_close(nvs);
-
-    ESP_LOGI(TAG, "AES key stored in NVS.");
-    return true;
+    if (c >= '0' && c <= '9') return c - '0';
+    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+    return -1;
 }
 
-bool aes_get_key(uint8_t *out_key)
+void aes_sender_set_key_hex(const char *hex32)
 {
-    memcpy(out_key, aes_key, AES_KEY_SIZE);
-    return true;
+    if (!hex32) {
+        return;
+    }
+
+    uint8_t key[16];
+
+    for (int i = 0; i < 16; ++i) {
+        int hi = hex_val(hex32[2*i]);
+        int lo = hex_val(hex32[2*i+1]);
+        if (hi < 0 || lo < 0) {
+            ESP_LOGW(TAG, "invalid AES_KEY_HEX");
+            return;
+        }
+        key[i] = (uint8_t)((hi << 4) | lo);
+    }
+
+    memcpy(s_key, key, 16);
+    s_key_set = true;
+    mbedtls_aes_setkey_enc(&s_aes, s_key, 128);
+    ESP_LOGI(TAG, "AES key set");
+    // opcionális: végén a "return;" el is hagyható
 }
 
-bool aes_encrypt_packet(const uint8_t *input, size_t input_len,
-                        encrypted_packet_t *out)
+/* IPS.dest[0..2] -> 3 cél IP/port */
+void aes_sender_send_line(const char *line)
 {
-    if (!input || !out) return false;
+    if (!s_key_set || !line || !line[0]) {
+        return;
+    }
 
-    // IV generálása
-    for (int i = 0; i < AES_IV_SIZE; i++)
-        out->iv[i] = esp_random() & 0xFF;
+    ensure_socket();
+    if (s_sock < 0) {
+        return;
+    }
 
-    // AES init
-    mbedtls_aes_context aes;
-    mbedtls_aes_init(&aes);
-    mbedtls_aes_setkey_enc(&aes, aes_key, AES_KEY_SIZE * 8);
+    size_t plain_len = strlen(line);
+    if (plain_len > 512) {
+        plain_len = 512;
+    }
 
-    // Padding (PKCS#7)
-    size_t pad = AES_KEY_SIZE - (input_len % AES_KEY_SIZE);
-    size_t enc_len = input_len + pad;
+    uint8_t buf[16 + 512];
+    size_t enc_len = 0;
 
-    uint8_t buffer[1024];
-    if (enc_len > sizeof(buffer))
-        return false;
+    if (!encrypt_ctr((const uint8_t *)line, plain_len,
+                     buf, sizeof(buf), &enc_len)) {
+        return;
+    }
 
-    memcpy(buffer, input, input_len);
-    memset(buffer + input_len, pad, pad);
+    /* IPS globál (globals.h-ból) */
+    extern ips_config_t IPS;
 
-    uint8_t iv_copy[AES_IV_SIZE];
-    memcpy(iv_copy, out->iv, AES_IV_SIZE);
+    for (int i = 0; i < 3; ++i) {
+        if (!IPS.dest[i].enabled) continue;
+        if (IPS.dest[i].dest_port == 0) continue;
+        if (IPS.dest[i].dest_ip.addr == 0) continue;
 
-    mbedtls_aes_crypt_cbc(&aes, MBEDTLS_AES_ENCRYPT,
-                          enc_len, iv_copy, buffer, out->data);
+        struct sockaddr_in sa;
+        memset(&sa, 0, sizeof(sa));
+        sa.sin_family      = AF_INET;
+        sa.sin_port        = htons(IPS.dest[i].dest_port);
+        sa.sin_addr.s_addr = IPS.dest[i].dest_ip.addr;   // már network-order
 
-    out->len = enc_len;
-
-    mbedtls_aes_free(&aes);
-    return true;
+        int sent = sendto(s_sock, buf, enc_len, 0,
+                          (struct sockaddr *)&sa, sizeof(sa));
+        if (sent < 0) {
+            ESP_LOGW(TAG, "sendto idx=%d failed", i);
+        }
+    }
 }

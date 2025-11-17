@@ -18,6 +18,7 @@
 #include "lwip/ip_addr.h"
 #include "nvs_flash.h"
 #include "nvs.h"
+#include "aes_sender.h"
 
 #ifndef IPSTR
 #define IPSTR "%d.%d.%d.%d"
@@ -268,6 +269,8 @@ struct EspCfg {
     uint16_t SERVICE_PORT = 0;
     uint8_t  SERVICE_EN   = 0;
 
+    char AES_KEY_HEX[33] = "";   // 32 hex + '\0'
+
     // Saját ethernet:
     uint8_t  ETH_MODE = 0;         // 0 = DHCP, 1 = statikus
     char     ETH_IP[16]   = "0.0.0.0";
@@ -401,7 +404,9 @@ static void json_cfg_print(char* buf, size_t sz, const EspCfg& c){
 
       "\"SERVICE_IP\":\"%s\","
       "\"SERVICE_PORT\":%u,"
-      "\"SERVICE_EN\":%u"
+      "\"SERVICE_EN\":%u,"
+
+      "\"AES_KEY_HEX\":\"%s\""
       "}\n",
       (unsigned)c.NETWORK_ID,
       (unsigned)c.ZONE_ID,
@@ -431,9 +436,12 @@ static void json_cfg_print(char* buf, size_t sz, const EspCfg& c){
 
       c.SERVICE_IP,
       (unsigned)c.SERVICE_PORT,
-      (unsigned)c.SERVICE_EN
+      (unsigned)c.SERVICE_EN,
+
+      c.AES_KEY_HEX
     );
 }
+
 
 // forward deklarációk
 static void gcfg_from_globals(void);
@@ -532,6 +540,8 @@ static esp_err_t api_config_post(httpd_req_t* req)
     parse_u16(body.data(), "\"SERVICE_PORT\"", g_cfg.SERVICE_PORT);
     parse_u8 (body.data(), "\"SERVICE_EN\""  , g_cfg.SERVICE_EN);
 
+    parse_str(body.data(), "\"AES_KEY_HEX\"", g_cfg.AES_KEY_HEX, sizeof(g_cfg.AES_KEY_HEX));
+
     // 2) g_cfg → NET / IPS (rendszer-szintű módosítások)
     globals_from_gcfg();
 
@@ -599,6 +609,12 @@ static void globals_from_gcfg(void)
     ip4addr_aton(g_cfg.SERVICE_IP, &IPS.dest[2].dest_ip);
     IPS.dest[2].dest_port = g_cfg.SERVICE_PORT;
     IPS.dest[2].enabled   = g_cfg.SERVICE_EN;
+
+    // AES kulcs (ha meg van adva)
+    if (g_cfg.AES_KEY_HEX[0] != '\0') {
+        aes_sender_set_key_hex(g_cfg.AES_KEY_HEX);
+    }
+
 }
 
 /* ================= /api/status ================= */
@@ -665,6 +681,12 @@ esp_err_t webserver_start(){
         gcfg_from_globals();
         /* opcionális: ezt az alapot is elmentheted NVS-be, ha szeretnéd */
         // esp_cfg_save_to_nvs();
+    }
+
+    aes_sender_init();
+
+    if (g_cfg.AES_KEY_HEX[0] != '\0') {
+        aes_sender_set_key_hex(g_cfg.AES_KEY_HEX);
     }
 
     httpd_config_t cfg = HTTPD_DEFAULT_CONFIG();

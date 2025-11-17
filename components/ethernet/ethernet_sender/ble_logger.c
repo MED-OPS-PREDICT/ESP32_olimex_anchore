@@ -1,10 +1,15 @@
 #include <string.h>
 #include <inttypes.h>
+#include <stdio.h>
+#include <unistd.h>
+
+#include "lwip/sockets.h"
+#include "lwip/inet.h"
+#include "lwip/netdb.h"
 
 #include "esp_log.h"
 #include "ble_logger.h"
 #include "aes_sender.h"
-#include "lwip/sockets.h"
 
 static const char *TAG_UWB = "UWB_DATA";
 
@@ -45,7 +50,13 @@ void uwb_notify_cb(const uint8_t *data, uint16_t len, bool from_cfg)
                      (unsigned)status,
                      (unsigned)uptime,
                      (unsigned)sync_ms);
-
+            char line[128];
+            snprintf(line, sizeof(line),
+                     "HB status=%u uptime=%u ms sync_ms=%u",
+                     (unsigned)status,
+                     (unsigned)uptime,
+                     (unsigned)sync_ms);
+            aes_sender_send_line(line);
             return;
         }
 
@@ -77,6 +88,18 @@ void uwb_notify_cb(const uint8_t *data, uint16_t len, bool from_cfg)
              pkt.anchor_id,
              pkt.tag_id,
              (uint64_t)pkt.timestamp);
+    char line[160];
+    snprintf(line, sizeof(line),
+             "ver=%u sync=%u tag_seq=%u anchor=0x%08" PRIX32
+             " tag=0x%08" PRIX32 " ts=%" PRIu64,
+             pkt.version,
+             pkt.sync_seq,
+             pkt.tag_seq,
+             pkt.anchor_id,
+             pkt.tag_id,
+             (uint64_t)pkt.timestamp);
+
+    aes_sender_send_line(line);
 }
 
 void send_uwb_udp(const uint8_t *data, size_t len)
