@@ -16,6 +16,7 @@
 #include "uwb_cfg_cli.h"
 #include "ble_logger.h"
 #include "ethernet_sender/ble_logger.h"
+#include "aes_sender.h"
 
 static const char *TAG = "main";
 

@@ -21,7 +21,7 @@ void globals_init(void)
     IPS.hb_ms = 1000;          // 1 s heartbeat
 
     // Cél 1: egy tipikus szerver
-    IP4_ADDR(&IPS.dest[0].dest_ip, 192,168,0,100);
+    IP4_ADDR(&IPS.dest[0].dest_ip, 192,168,0,172);
     IPS.dest[0].dest_port = 60000;
     IPS.dest[0].enabled   = 1;
 

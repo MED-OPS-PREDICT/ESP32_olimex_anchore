@@ -104,32 +104,13 @@ void uwb_notify_cb(const uint8_t *data, uint16_t len, bool from_cfg)
 
 void send_uwb_udp(const uint8_t *data, size_t len)
 {
-    encrypted_packet_t enc;
+    if (!data || len == 0) return;
 
-    if (!aes_encrypt_packet(data, len, &enc)) {
-        ESP_LOGE("UDP", "AES encryption failed!");
-        return;
-    }
+    char tmp[512];
+    if (len > 500) len = 500;
 
-    int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    for (int i = 0; i < len; i++)
+        sprintf(tmp + i*3, "%02X ", data[i]);
 
-    struct sockaddr_in dest = {
-        .sin_addr.s_addr = inet_addr("192.168.0.101"),
-        .sin_family = AF_INET,
-        .sin_port = htons(9500),
-    };
-
-    // IV + encrypted data egy packetben
-    uint8_t sendbuf[2000];
-    memcpy(sendbuf, enc.iv, AES_IV_SIZE);
-    memcpy(sendbuf + AES_IV_SIZE, enc.data, enc.len);
-
-    sendto(sock,
-           sendbuf,
-           enc.len + AES_IV_SIZE,
-           0,
-           (struct sockaddr *)&dest,
-           sizeof(dest));
-
-    close(sock);
+    aes_sender_send_line(tmp);
 }

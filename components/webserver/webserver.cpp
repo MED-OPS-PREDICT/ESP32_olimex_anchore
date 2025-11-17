@@ -131,6 +131,29 @@ static esp_err_t options_ok(httpd_req_t* req){
     return httpd_resp_sendstr(req, "");
 }
 
+esp_err_t handle_setkey(httpd_req_t *req)
+{
+    char buf[64];
+    int r = httpd_req_recv(req, buf, sizeof(buf)-1);
+    if (r <= 0) return ESP_FAIL;
+    buf[r] = 0;
+
+    if (strlen(buf) != 32) {
+        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid key length");
+        return ESP_OK;
+    }
+
+    if (!key_storage_save(buf)) {
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "NVS error");
+        return ESP_OK;
+    }
+
+    aes_sender_set_key_hex(buf);
+
+    httpd_resp_sendstr(req, "OK");
+    return ESP_OK;
+}
+
 /* ================= Static file helper ================= */
 static esp_err_t send_file(httpd_req_t* req, const char* path, const char* ctype){
     FILE* f=fopen(path,"rb");

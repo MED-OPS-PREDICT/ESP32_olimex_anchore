@@ -52,8 +52,12 @@ static void apply_static_ip(esp_netif_t *netif)
 
 static void on_got_ip(void *arg, esp_event_base_t base, int32_t id, void *data) {
     const ip_event_got_ip_t *e = (const ip_event_got_ip_t *)data;
+    esp_netif_ip_info_t ip;
+    esp_netif_get_ip_info(esp_netif_get_handle_from_ifkey("ETH_DEF"), &ip);
+
     ESP_LOGI(TAG, "IP: " IPSTR "  NM: " IPSTR "  GW: " IPSTR,
              IP2STR(&e->ip_info.ip), IP2STR(&e->ip_info.netmask), IP2STR(&e->ip_info.gw));
+    ESP_LOGI(TAG, "ip=%s mask=%s gw=%s", ip4addr_ntoa(&ip.ip), ip4addr_ntoa(&ip.netmask), ip4addr_ntoa(&ip.gw));
 }
 
 static void phy_power_enable(void) {
