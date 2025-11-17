@@ -19,6 +19,7 @@
 #include "nvs_flash.h"
 #include "nvs.h"
 #include "aes_sender.h"
+#include "key_storage.h"
 
 #ifndef IPSTR
 #define IPSTR "%d.%d.%d.%d"
@@ -149,10 +150,10 @@ esp_err_t handle_setkey(httpd_req_t *req)
     }
 
     aes_sender_set_key_hex(buf);
-
     httpd_resp_sendstr(req, "OK");
     return ESP_OK;
 }
+
 
 /* ================= Static file helper ================= */
 static esp_err_t send_file(httpd_req_t* req, const char* path, const char* ctype){
