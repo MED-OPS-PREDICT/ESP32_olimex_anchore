@@ -179,7 +179,7 @@ static bool parse_tlvs_and_update(const uint8_t* p, uint16_t n)
 static void on_ble_notify(const uint8_t* p, uint16_t n, bool from_cfg)
 {
     if (!p || n == 0) return;
-    ESP_LOGI(TAG, "notify: len=%u, from_cfg=%d, op=0x%02x", n, from_cfg, n>=2?p[1]:0);
+    // ESP_LOGI(TAG, "notify: len=%u, from_cfg=%d, op=0x%02x", n, from_cfg, n>=2?p[1]:0);
 
     /* SET-ACK (külön jelzés) */
     if (n == 6 && p[0] == 1 && p[1] == 0x81) {
@@ -226,7 +226,7 @@ static void tlv_worker_task(void* arg)
     for(;;){
         if(xQueueReceive(s_q,&f,portMAX_DELAY)!=pdTRUE) continue;
         if(!f) continue;
-        ESP_LOGI(TAG, "worker: frame len=%u, op=0x%02x", f->len, f->len>=2?f->data[1]:0);
+        // ESP_LOGI(TAG, "worker: frame len=%u, op=0x%02x", f->len, f->len>=2?f->data[1]:0);
 
         if (/*f->from_cfg &&*/ f->len >= 2) {
             uint8_t op = f->data[1];
@@ -441,7 +441,7 @@ void http_register_routes(httpd_handle_t h)
 /* ====== Init: sor, szemaforok, callback, worker ====== */
 void ble_http_bridge_init(void)
 {
-    ESP_LOGI(TAG, "ble_http_bridge_init()");
+    // ESP_LOGI(TAG, "ble_http_bridge_init()");
 
     if(!s_q){
         s_q = xQueueCreate(8, sizeof(frame_t*));

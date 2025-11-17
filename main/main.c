@@ -14,6 +14,8 @@
 #include "esp_spiffs.h"
 #include "webserver.hpp"
 #include "uwb_cfg_cli.h"
+#include "ble_logger.h"
+#include "ethernet_sender/ble_logger.h"
 
 static const char *TAG = "main";
 
@@ -129,6 +131,7 @@ void app_main(void)
     /* BLE: opcionális name filter, pl. "UWB_ANCHOR_01" */
     ble_start("UWB_ANCHOR_01", on_ble_notify);
     uwb_cfg_cli_init();
+    ble_register_notify_cb(uwb_notify_cb);
 
     // példa GET kérés 600ms után:
     vTaskDelay(pdMS_TO_TICKS(600));
