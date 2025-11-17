@@ -631,7 +631,6 @@ static esp_err_t api_status_get(httpd_req_t* req){
                       g_status.state==ST_WARN ? "warn" :
                       g_status.state==ST_ERR  ? "err"  : "off");
 
-    // ETH akkor "up", ha már nem 0.0.0.0 az IP
     bool eth_ok = (NET.ip.addr != 0);
 
     char buf[256];

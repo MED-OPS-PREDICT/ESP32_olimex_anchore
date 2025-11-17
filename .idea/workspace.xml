@@ -6,10 +6,6 @@
   <component name="ChangeListManager">
     <list default="true" id="d7727baf-cd08-430d-884d-b4e040b4a9ee" name="Changes" comment="a">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/components/ethernet/CMakeLists.txt" beforeDir="false" afterPath="$PROJECT_DIR$/components/ethernet/CMakeLists.txt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/components/ethernet/ethernet_sender/aes_sender.c" beforeDir="false" afterPath="$PROJECT_DIR$/components/ethernet/ethernet_sender/aes_sender.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/components/ethernet/ethernet_sender/aes_sender.h" beforeDir="false" afterPath="$PROJECT_DIR$/components/ethernet/ethernet_sender/aes_sender.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/components/ethernet/ethernet_sender/ble_logger.c" beforeDir="false" afterPath="$PROJECT_DIR$/components/ethernet/ethernet_sender/ble_logger.c" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/components/webserver/webserver.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/components/webserver/webserver.cpp" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -201,7 +197,23 @@
       <option name="project" value="LOCAL" />
       <updated>1763391731134</updated>
     </task>
-    <option name="localTasksCounter" value="17" />
+    <task id="LOCAL-00017" summary="a">
+      <option name="closed" value="true" />
+      <created>1763395304003</created>
+      <option name="number" value="00017" />
+      <option name="presentableId" value="LOCAL-00017" />
+      <option name="project" value="LOCAL" />
+      <updated>1763395304003</updated>
+    </task>
+    <task id="LOCAL-00018" summary="a">
+      <option name="closed" value="true" />
+      <created>1763395400382</created>
+      <option name="number" value="00018" />
+      <option name="presentableId" value="LOCAL-00018" />
+      <option name="project" value="LOCAL" />
+      <updated>1763395400382</updated>
+    </task>
+    <option name="localTasksCounter" value="19" />
     <servers />
   </component>
   <component name="Vcs.Log.Tabs.Properties">
