@@ -21,6 +21,19 @@
 #include "aes_sender.h"
 #include "key_storage.h"
 
+#include "webserver.hpp"
+#include "globals.h"   // g_status, stb.
+#include "error_code_decoding.h"   // <--- ÚJ
+
+extern "C" void ble_http_bridge_init(void);
+extern "C" void http_register_routes(httpd_handle_t h);
+
+// ÚJ: HB getterek http_server.c-ből
+extern "C" uint8_t  hb_get_status(void);
+extern "C" uint32_t hb_get_uptime_ms(void);
+extern "C" uint32_t hb_get_sync_ms(void);
+extern "C" bool     hb_has_status(void);
+
 #ifndef IPSTR
 #define IPSTR "%d.%d.%d.%d"
 #endif
@@ -293,7 +306,7 @@ struct EspCfg {
     uint16_t SERVICE_PORT = 0;
     uint8_t  SERVICE_EN   = 0;
 
-    char AES_KEY_HEX[33] = "";   // 32 hex + '\0'
+    char aes_key_hex[65] = "";
 
     // Saját ethernet:
     uint8_t  ETH_MODE = 0;         // 0 = DHCP, 1 = statikus
@@ -430,7 +443,7 @@ static void json_cfg_print(char* buf, size_t sz, const EspCfg& c){
       "\"SERVICE_PORT\":%u,"
       "\"SERVICE_EN\":%u,"
 
-      "\"AES_KEY_HEX\":\"%s\""
+      "\"AES_KEY\":\"%s\""
       "}\n",
       (unsigned)c.NETWORK_ID,
       (unsigned)c.ZONE_ID,
@@ -462,7 +475,7 @@ static void json_cfg_print(char* buf, size_t sz, const EspCfg& c){
       (unsigned)c.SERVICE_PORT,
       (unsigned)c.SERVICE_EN,
 
-      c.AES_KEY_HEX
+      c.aes_key_hex
     );
 }
 
@@ -564,7 +577,7 @@ static esp_err_t api_config_post(httpd_req_t* req)
     parse_u16(body.data(), "\"SERVICE_PORT\"", g_cfg.SERVICE_PORT);
     parse_u8 (body.data(), "\"SERVICE_EN\""  , g_cfg.SERVICE_EN);
 
-    parse_str(body.data(), "\"AES_KEY_HEX\"", g_cfg.AES_KEY_HEX, sizeof(g_cfg.AES_KEY_HEX));
+    parse_str(body.data(), "\"AES_KEY\"", g_cfg.aes_key_hex, sizeof(g_cfg.aes_key_hex));
 
     // 2) g_cfg → NET / IPS (rendszer-szintű módosítások)
     globals_from_gcfg();
@@ -635,8 +648,8 @@ static void globals_from_gcfg(void)
     IPS.dest[2].enabled   = g_cfg.SERVICE_EN;
 
     // AES kulcs (ha meg van adva)
-    if (g_cfg.AES_KEY_HEX[0] != '\0') {
-        aes_sender_set_key_hex(g_cfg.AES_KEY_HEX);
+    if (g_cfg.aes_key_hex[0] != '\0') {
+        aes_sender_set_key_hex(g_cfg.aes_key_hex);
     }
 
 }
@@ -657,7 +670,32 @@ static esp_err_t api_status_get(httpd_req_t* req){
 
     bool eth_ok = (NET.ip.addr != 0);
 
-    char buf[256];
+    // HB / anchor állapot (BLE TLV-ből)
+    uint8_t  hb_st   = hb_get_status();
+    uint32_t hb_up   = hb_get_uptime_ms();
+    uint32_t hb_sync = hb_get_sync_ms();
+
+    char hb_text[96];
+    const char *hb_txt_ptr = "Anchor állapot: ismeretlen";
+    const char *hb_level   = "warn";   // ok / warn / err
+
+    if (hb_has_status()) {
+        anchor_status_to_text(hb_st, hb_text, sizeof(hb_text));
+        hb_txt_ptr = hb_text;
+
+        // szín eldöntése az ST_* bitek alapján
+        if (!(hb_st & ST_BLE_LINK) || !(hb_st & ST_CFG_NOTIFY)) {
+            hb_level = "err";
+        } else if (hb_st & ST_SYNC_LOCK) {
+            hb_level = (hb_st & ST_SYNC_PRELOCK) ? "warn" : "ok";
+        } else if (hb_st & ST_SYNC_PRELOCK) {
+            hb_level = "warn";
+        } else {
+            hb_level = "err";
+        }
+    }
+
+    char buf[512];
     int n = snprintf(buf, sizeof(buf),
         "{"
           "\"anchor\":\"%s\","
@@ -669,7 +707,12 @@ static esp_err_t api_status_get(httpd_req_t* req){
           "\"ble_up\":%d,"
           "\"zone_en\":%u,"
           "\"main_en\":%u,"
-          "\"service_en\":%u"
+          "\"service_en\":%u,"
+          "\"hb_status\":%u,"
+          "\"hb_uptime\":%u,"
+          "\"hb_sync_ms\":%u,"
+          "\"hb_text\":\"%s\","
+          "\"hb_level\":\"%s\""
         "}\n",
         g_status.anchor,
         g_status.id,
@@ -680,7 +723,12 @@ static esp_err_t api_status_get(httpd_req_t* req){
         ble_up,
         (unsigned)IPS.dest[0].enabled,
         (unsigned)IPS.dest[1].enabled,
-        (unsigned)IPS.dest[2].enabled
+        (unsigned)IPS.dest[2].enabled,
+        (unsigned)hb_st,
+        (unsigned)hb_up,
+        (unsigned)hb_sync,
+        hb_txt_ptr,
+        hb_level
     );
 
     httpd_resp_set_type(req,"application/json");
@@ -708,8 +756,8 @@ esp_err_t webserver_start(){
 
     aes_sender_init();
 
-    if (g_cfg.AES_KEY_HEX[0] != '\0') {
-        aes_sender_set_key_hex(g_cfg.AES_KEY_HEX);
+    if (g_cfg.aes_key_hex[0] != '\0') {
+        aes_sender_set_key_hex(g_cfg.aes_key_hex);
     }
 
     httpd_config_t cfg = HTTPD_DEFAULT_CONFIG();

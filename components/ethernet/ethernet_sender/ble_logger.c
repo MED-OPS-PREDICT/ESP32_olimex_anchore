@@ -10,6 +10,7 @@
 #include "esp_log.h"
 #include "ble_logger.h"
 #include "aes_sender.h"
+#include "error_code_decoding.h"
 
 static const char *TAG_UWB = "UWB_DATA";
 
@@ -17,6 +18,10 @@ static const char *TAG_UWB = "UWB_DATA";
 #define T_STATUS     0x01
 #define T_UPTIME_MS  0x02
 #define T_SYNC_MS    0x03
+
+static uint8_t  g_last_hb_status = 0;
+static uint32_t g_last_hb_uptime = 0;
+static uint16_t g_last_hb_sync   = 0;
 
 // FONTOS: NE legyen static, mert header-ben nem static a deklaráció
 void uwb_notify_cb(const uint8_t *data, uint16_t len, bool from_cfg)
@@ -26,6 +31,11 @@ void uwb_notify_cb(const uint8_t *data, uint16_t len, bool from_cfg)
         // életjel/állapot TLV-k
         if (len >= 3 && data[0] == T_STATUS && data[1] == 1) {
             uint8_t status = data[2];
+
+            char msg[96];
+            anchor_status_to_text(status, msg, sizeof(msg));
+
+            printf("Anchor HB: status=0x%02X  %s\n", status, msg);
 
             // keresd meg benne az UPTIME_MS és SYNC_MS TLV-ket
             const uint8_t *p = data + 3;
@@ -98,9 +108,11 @@ void uwb_notify_cb(const uint8_t *data, uint16_t len, bool from_cfg)
              pkt.anchor_id,
              pkt.tag_id,
              (uint64_t)pkt.timestamp);
-
     aes_sender_send_line(line);
 }
+uint8_t  status_get_last_hb_status(void) { return g_last_hb_status; }
+uint32_t status_get_last_hb_uptime(void) { return g_last_hb_uptime; }
+uint16_t status_get_last_hb_sync_ms(void){ return g_last_hb_sync;  }
 
 void send_uwb_udp(const uint8_t *data, size_t len)
 {

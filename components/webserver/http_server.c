@@ -459,3 +459,25 @@ void ble_http_bridge_init(void)
         cb_reg = true;
     }
 }
+
+// ===== HB státusz getterek a webserver.cpp-nek =====
+
+uint8_t hb_get_status(void)
+{
+    return s_cfg.have[H_STATUS] ? s_cfg.status : 0;
+}
+
+uint32_t hb_get_uptime_ms(void)
+{
+    return s_cfg.have[H_UPTIME_MS] ? s_cfg.uptime_ms : 0;
+}
+
+uint32_t hb_get_sync_ms(void)
+{
+    return s_cfg.have[H_SYNC_MS] ? s_cfg.sync_ms : 0;
+}
+
+bool hb_has_status(void)
+{
+    return s_cfg.have[H_STATUS];
+}

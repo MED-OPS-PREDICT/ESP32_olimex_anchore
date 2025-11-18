@@ -5,7 +5,15 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="d7727baf-cd08-430d-884d-b4e040b4a9ee" name="Changes" comment="a">
-      <change beforePath="$PROJECT_DIR$/components/key_storage/CMakeLists.txt" beforeDir="false" afterPath="$PROJECT_DIR$/components/key_storage/CMakeLists.txt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/main/error_code_decoding.c" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/main/error_code_decoding.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/ethernet/ethernet_sender/aes_sender.c" beforeDir="false" afterPath="$PROJECT_DIR$/components/ethernet/ethernet_sender/aes_sender.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/ethernet/ethernet_sender/ble_logger.c" beforeDir="false" afterPath="$PROJECT_DIR$/components/ethernet/ethernet_sender/ble_logger.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/webserver/CMakeLists.txt" beforeDir="false" afterPath="$PROJECT_DIR$/components/webserver/CMakeLists.txt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/webserver/http_server.c" beforeDir="false" afterPath="$PROJECT_DIR$/components/webserver/http_server.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/webserver/spiffs/super_user.html" beforeDir="false" afterPath="$PROJECT_DIR$/components/webserver/spiffs/super_user.html" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/webserver/webserver.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/components/webserver/webserver.cpp" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -58,6 +66,7 @@
 }</component>
   <component name="RecentsManager">
     <key name="MoveFile.RECENT_KEYS">
+      <recent name="C:\Users\esp32olimex\PycharmProjects\ESP32_olimex_anchore\main" />
       <recent name="C:\Users\esp32olimex\PycharmProjects\ESP32_olimex_anchore\components\key_storage" />
     </key>
   </component>
@@ -252,7 +261,15 @@
       <option name="project" value="LOCAL" />
       <updated>1763404846209</updated>
     </task>
-    <option name="localTasksCounter" value="23" />
+    <task id="LOCAL-00023" summary="a">
+      <option name="closed" value="true" />
+      <created>1763405042565</created>
+      <option name="number" value="00023" />
+      <option name="presentableId" value="LOCAL-00023" />
+      <option name="project" value="LOCAL" />
+      <updated>1763405042565</updated>
+    </task>
+    <option name="localTasksCounter" value="24" />
     <servers />
   </component>
   <component name="Vcs.Log.Tabs.Properties">

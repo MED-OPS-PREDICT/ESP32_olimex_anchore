@@ -118,11 +118,25 @@ void aes_sender_set_key_hex(const char *hex32)
 
 void aes_sender_send_line(const char *line)
 {
-    if (!s_key_set || !line || !line[0])
+    //aes_sender_set_key_hex("00112233445566778899AABBCCDDEEFF");
+
+    if (!line || !line[0]) {
+        ESP_LOGW("AES_SENDER", "empty line, skip");
         return;
+    }
+
+    //ESP_LOGI("AES_SENDER", "send_line: '%s'", line);
+
+    if (!s_key_set) {
+        ESP_LOGE("AES_SENDER", "key not set, DROP");
+        return;
+    }
 
     ensure_socket();
-    if (s_sock < 0) return;
+    if (s_sock < 0) {
+        ESP_LOGE("AES_SENDER", "no UDP socket");
+        return;
+    }
 
     size_t plain_len = strlen(line);
     if (plain_len > 500) plain_len = 500;
@@ -130,19 +144,35 @@ void aes_sender_send_line(const char *line)
     uint8_t out[16 + 512];
     size_t enc_len = 0;
 
-    if (!encrypt_ctr((uint8_t*)line, plain_len, out, sizeof(out), &enc_len))
+    // ESP_LOGI("AES_SENDER", "before encrypt: plain_len=%u", (unsigned)plain_len);
+    bool ok = encrypt_ctr((const uint8_t*)line,
+                          plain_len,
+                          out,
+                          sizeof(out),
+                          &enc_len);
+    if (!ok) {
+        ESP_LOGE("AES_SENDER", "encrypt_ctr FAILED (plain_len=%u)", (unsigned)plain_len);
         return;
+    }
+
+    // ESP_LOGI("AES_SENDER", "after encrypt: enc_len=%u", (unsigned)enc_len);
 
     extern ips_config_t IPS;
 
-    for (int i = 0; i < 3; i++)
-    {
+    for (int i = 0; i < 3; i++) {
         if (!IPS.dest[i].enabled) continue;
 
-        struct sockaddr_in sa;
-        sa.sin_family = AF_INET;
-        sa.sin_port   = htons(IPS.dest[i].dest_port);
+        struct sockaddr_in sa = { 0 };
+        sa.sin_family      = AF_INET;
+        sa.sin_port        = htons(IPS.dest[i].dest_port);
         sa.sin_addr.s_addr = IPS.dest[i].dest_ip.addr;
+
+        ESP_LOGI("AES_SENDER",
+                 "sendto idx=%d ip=%08X port=%u len=%u",
+                 i,
+                 (unsigned)IPS.dest[i].dest_ip.addr,
+                 (unsigned)IPS.dest[i].dest_port,
+                 (unsigned)enc_len);
 
         sendto(s_sock, out, enc_len, 0,
                (struct sockaddr*)&sa, sizeof(sa));
