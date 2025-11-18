@@ -523,6 +523,7 @@ static esp_err_t api_config_get(httpd_req_t* req){
     return httpd_resp_send(req, buf, strlen(buf));
 }
 
+
 static esp_err_t api_config_post(httpd_req_t* req)
 {
     if (!require_role(req, ROLE_BLE)) return ESP_FAIL;
