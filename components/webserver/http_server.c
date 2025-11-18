@@ -190,6 +190,12 @@ static void on_ble_notify(const uint8_t* p, uint16_t n, bool from_cfg)
     if (!s_q) return;
 
     bool is_tlv = (n >= 2 && (p[1] == OP_START || p[1] == OP_LINE || p[1] == OP_DONE));
+
+    // Ha nem TLV keret, próbáljuk "HB:" sor logként értelmezni
+    if (!is_tlv) {
+        try_parse_hb_line(p, n);
+    }
+
     uint8_t op = is_tlv ? p[1] : 0;
 
     frame_t* f = (frame_t*)pvPortMalloc(sizeof(frame_t) + n);

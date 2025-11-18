@@ -698,15 +698,14 @@ static esp_err_t api_status_get(httpd_req_t* req){
             hb_level = "err";
         }
     } else {
-        // NINCS HB → essünk vissza a g_status.state-re
         if (g_status.state == ST_OK) {
-            hb_txt_ptr = "Anchor állapot: OK";
+            hb_txt_ptr = "Anchor: OK (csak összefoglalt állapot)";
             hb_level   = "ok";
         } else if (g_status.state == ST_WARN) {
-            hb_txt_ptr = "Anchor állapot: figyelmeztetés";
+            hb_txt_ptr = "Anchor: figyelmeztetés (csak összefoglalt állapot)";
             hb_level   = "warn";
         } else if (g_status.state == ST_ERR) {
-            hb_txt_ptr = "Anchor állapot: hiba";
+            hb_txt_ptr = "Anchor: hiba (csak összefoglalt állapot)";
             hb_level   = "err";
         } else {
             hb_txt_ptr = "Anchor állapot: nincs adat";
@@ -831,4 +830,47 @@ esp_err_t webserver_start(){
 esp_err_t webserver_stop(){
     if(!s_http) return ESP_OK;
     httpd_stop(s_http); s_http=nullptr; return ESP_OK;
+}
+
+// "HB: HB status=11 uptime=4322864 ms sync_ms=3388" sorok parszolása
+static void try_parse_hb_line(const uint8_t *p, uint16_t n)
+{
+    if (!p || n == 0) {
+        return;
+    }
+
+    // legyen 0-terminált string
+    char buf[96];
+    if (n >= sizeof(buf)) {
+        n = sizeof(buf) - 1;
+    }
+    memcpy(buf, p, n);
+    buf[n] = 0;
+
+    // csak ha "HB:"-val kezdődik
+    if (strncmp(buf, "HB:", 3) != 0) {
+        return;
+    }
+
+    unsigned st   = 0;
+    unsigned up   = 0;
+    unsigned sync = 0;
+
+    int matched = sscanf(buf,
+                         "HB: HB status=%u uptime=%u ms sync_ms=%u",
+                         &st, &up, &sync);
+    if (matched >= 1) {
+        if (st <= 0xFF) {
+            s_cfg.status = (uint8_t)st;
+            s_cfg.have[H_STATUS] = true;
+        }
+    }
+    if (matched >= 2) {
+        s_cfg.uptime_ms = up;
+        s_cfg.have[H_UPTIME_MS] = true;
+    }
+    if (matched >= 3) {
+        s_cfg.sync_ms = sync;
+        s_cfg.have[H_SYNC_MS] = true;
+    }
 }
