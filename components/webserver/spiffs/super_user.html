@@ -822,38 +822,22 @@ async function refreshStatus() {
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const s = await r.json();
 
-    // BLE
-    if (s.ble_up) {
-      setPillEl('pillBle', 'ok', 'BLE: csatlakozva');
-    } else {
-      setPillEl('pillBle', 'err', 'BLE: nincs kapcsolat');
-    }
-
-    // ETH – akkor "ok", ha a backend szerint eth_up=1
+    // ETH
     if (s.eth_up) {
-      setPillEl('pillEth', 'ok', 'ETH: IP ok');
+      setPillEl('pillEth', 'ok',  'ETH: van IP');
     } else {
       setPillEl('pillEth', 'err', 'ETH: nincs IP');
     }
 
-    // Zóna vezérlő / Fő szerver / Service – itt most csak az "engedélyezve" állapotot mutatjuk
-    setPillEl(
-      'pillZone',
-      s.zone_en ? 'ok' : 'warn',
-      'Zóna vezérlő: ' + (s.zone_en ? 'engedélyezve' : 'tiltva')
-    );
+    // zóna / main / service engedély
+    setPillEl('pillZone',  s.zone_en   ? 'ok' : 'warn',
+              s.zone_en   ? 'Zóna vezérlő: engedélyezve' : 'Zóna vezérlő: tiltva');
 
-    setPillEl(
-      'pillMain',
-      s.main_en ? 'ok' : 'warn',
-      'Fő szerver: ' + (s.main_en ? 'engedélyezve' : 'tiltva')
-    );
+    setPillEl('pillMain',  s.main_en   ? 'ok' : 'warn',
+              s.main_en   ? 'Fő szerver: engedélyezve'   : 'Fő szerver: tiltva');
 
-    setPillEl(
-      'pillServ',
-      s.service_en ? 'ok' : 'warn',
-      'Service: ' + (s.service_en ? 'engedélyezve' : 'tiltva')
-    );
+    setPillEl('pillServ',  s.service_en? 'ok' : 'warn',
+              s.service_en? 'Service: engedélyezve'      : 'Service: tiltva');
 
     // Anchor / szinkron állapot – a /api/status hb_* mezői alapján
     const as = $('anchorStatus');

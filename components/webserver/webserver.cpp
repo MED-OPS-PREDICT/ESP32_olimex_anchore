@@ -688,7 +688,6 @@ static esp_err_t api_status_get(httpd_req_t* req){
         anchor_status_to_text(hb_st, hb_text, sizeof(hb_text));
         hb_txt_ptr = hb_text;
 
-        // szín eldöntése az ST_* bitek alapján
         if (!(hb_st & ST_BLE_LINK) || !(hb_st & ST_CFG_NOTIFY)) {
             hb_level = "err";
         } else if (hb_st & ST_SYNC_LOCK) {
@@ -697,6 +696,21 @@ static esp_err_t api_status_get(httpd_req_t* req){
             hb_level = "warn";
         } else {
             hb_level = "err";
+        }
+    } else {
+        // NINCS HB → essünk vissza a g_status.state-re
+        if (g_status.state == ST_OK) {
+            hb_txt_ptr = "Anchor állapot: OK";
+            hb_level   = "ok";
+        } else if (g_status.state == ST_WARN) {
+            hb_txt_ptr = "Anchor állapot: figyelmeztetés";
+            hb_level   = "warn";
+        } else if (g_status.state == ST_ERR) {
+            hb_txt_ptr = "Anchor állapot: hiba";
+            hb_level   = "err";
+        } else {
+            hb_txt_ptr = "Anchor állapot: nincs adat";
+            hb_level   = "warn";
         }
     }
 
