@@ -44,14 +44,6 @@
       margin:0 auto;
     }
 
-    /* KONFIG KÁRTYÁK RÁCSA – fix szélességek, középre rendezve */
-    .cfg-grid{
-      display:grid;
-      gap:14px;
-      grid-template-columns: 360px 520px 360px; /* bal – középső – jobb */
-      justify-content:center;                  /* rács középre */
-    }
-
     /* maga a kártya: azonos magasság, a tartalom kitölti */
     .cfg-card{
       display:flex;
@@ -656,20 +648,29 @@ async function doDwmGet(){
   if (gBusy) return;
   setBusy(true);
   logln('[UI] LEKÉR DWM (HTTP)');
-  try{
+  try {
     const hdr = {
-      'Accept':'application/json',
-      'Authorization':'Basic '+btoa('admin:admin')
+      'Accept': 'application/json',
+      'Authorization': 'Basic ' + btoa('admin:admin')
     };
-    const r = await fetch('/api/dwm_get', { cache:'no-store', headers:hdr });
-    if(!r.ok) throw new Error('HTTP '+r.status);
+
+    const r = await fetch('/api/dwm_get', {
+      method: 'GET',
+      cache: 'no-store',
+      headers: hdr
+    });
+
+    if (!r.ok) {
+      throw new Error('HTTP ' + r.status);
+    }
+
     const j = await r.json();
-    g.dwm = j || {};
+    g.dwm = j;
     renderAll();
-    logln('[DWM] kész (HTTP): '+JSON.stringify(j));
-  }catch(e){
-    logln('[DWM] hiba (HTTP): '+e);
-  }finally{
+    logln('[DWM] kész (HTTP): ' + JSON.stringify(j));
+  } catch (e) {
+    logln('[DWM] hiba (HTTP): ' + (e.message || e));
+  } finally {
     setBusy(false);
   }
 }

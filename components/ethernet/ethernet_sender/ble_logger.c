@@ -110,6 +110,7 @@ void uwb_notify_cb(const uint8_t *data, uint16_t len, bool from_cfg)
              (uint64_t)pkt.timestamp);
     aes_sender_send_line(line);
 }
+
 uint8_t  status_get_last_hb_status(void) { return g_last_hb_status; }
 uint32_t status_get_last_hb_uptime(void) { return g_last_hb_uptime; }
 uint16_t status_get_last_hb_sync_ms(void){ return g_last_hb_sync;  }

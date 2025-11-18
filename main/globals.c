@@ -36,3 +36,9 @@ void globals_init(void)
 }
 
 status_t g_status = { "A1", 1, 0.0f, 0.0f, ST_UNKNOWN };
+
+uint8_t g_hb_status = 0;
+uint32_t g_hb_uptime = 0;
+uint16_t g_hb_sync_ms = 0;
+char g_hb_text[96] = "Anchor állapot: ismeretlen";
+char g_hb_level[16] = "warn";

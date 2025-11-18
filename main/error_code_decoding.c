@@ -1,6 +1,7 @@
 #include "error_code_decoding.h"
 #include <stdio.h>
 #include <string.h>
+#include <stdbool.h>
 
 const char *anchor_status_to_text(uint8_t st, char *buf, size_t buflen)
 {

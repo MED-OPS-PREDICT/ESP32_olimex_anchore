@@ -806,10 +806,6 @@ esp_err_t webserver_start(){
 
     ESP_LOGI(TAG,"webserver started");
 
-    if (s_http != nullptr) {
-        http_register_routes(s_http);   // <-- itt húzza be a /api/dwm_get és /api/dwm_set route-okat
-    }
-
     return ESP_OK;
 }
 

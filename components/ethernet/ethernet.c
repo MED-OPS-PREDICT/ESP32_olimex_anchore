@@ -57,7 +57,10 @@ static void on_got_ip(void *arg, esp_event_base_t base, int32_t id, void *data) 
 
     ESP_LOGI(TAG, "IP: " IPSTR "  NM: " IPSTR "  GW: " IPSTR,
              IP2STR(&e->ip_info.ip), IP2STR(&e->ip_info.netmask), IP2STR(&e->ip_info.gw));
-    ESP_LOGI(TAG, "ip=%s mask=%s gw=%s", ip4addr_ntoa(&ip.ip), ip4addr_ntoa(&ip.netmask), ip4addr_ntoa(&ip.gw));
+    ESP_LOGI(TAG, "ip=%s mask=%s gw=%s",
+         ip4addr_ntoa((const ip4_addr_t *)&ip.ip),
+         ip4addr_ntoa((const ip4_addr_t *)&ip.netmask),
+         ip4addr_ntoa((const ip4_addr_t *)&ip.gw));
 }
 
 static void phy_power_enable(void) {

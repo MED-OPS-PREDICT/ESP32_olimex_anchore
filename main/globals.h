@@ -45,3 +45,9 @@ typedef struct {
 extern status_t g_status;
 
 void globals_init(void);
+
+extern uint8_t g_hb_status;
+extern uint32_t g_hb_uptime;
+extern uint16_t g_hb_sync_ms;
+extern char g_hb_text[96];
+extern char g_hb_level[16];
