@@ -644,7 +644,7 @@ async function doEspGet(){
 }
 
 /* ===== BLE helyett HTTP DWM GET ===== */
-async function doDwmGet(){
+async function doDwmGet() {
   if (gBusy) return;
   setBusy(true);
   logln('[UI] LEKÉR DWM (HTTP)');
@@ -653,23 +653,15 @@ async function doDwmGet(){
       'Accept': 'application/json',
       'Authorization': 'Basic ' + btoa('admin:admin')
     };
-
-    const r = await fetch('/api/dwm_get', {
-      method: 'GET',
-      cache: 'no-store',
-      headers: hdr
-    });
-
-    if (!r.ok) {
-      throw new Error('HTTP ' + r.status);
-    }
+    const r = await fetch('/api/dwm_get', { cache: 'no-store', headers: hdr });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
 
     const j = await r.json();
     g.dwm = j;
     renderAll();
     logln('[DWM] kész (HTTP): ' + JSON.stringify(j));
   } catch (e) {
-    logln('[DWM] hiba (HTTP): ' + (e.message || e));
+    logln('[DWM] hiba (HTTP): ' + e.message);
   } finally {
     setBusy(false);
   }
@@ -814,12 +806,12 @@ async function openSerial(){
   }
 }
 function setPillEl(id, level, txt) {
-  const el = document.getElementById(id);
+  const el = $(id);
   if (!el) return;
   let cls = 'pill ';
-  if (level === 'ok')      cls += 'ok';
+  if (level === 'ok') cls += 'ok';
   else if (level === 'warn') cls += 'warn';
-  else                     cls += 'err';
+  else cls += 'err';
   el.className = cls;
   el.textContent = txt;
 }
@@ -832,55 +824,49 @@ async function refreshStatus() {
 
     // BLE
     if (s.ble_up) {
-      setPillEl('pillBle', 'ok',  'BLE: csatlakozva');
+      setPillEl('pillBle', 'ok', 'BLE: csatlakozva');
     } else {
       setPillEl('pillBle', 'err', 'BLE: nincs kapcsolat');
     }
 
-    // ETH – ezt eddig nem kezelted, ezért maradt „ismeretlen”
+    // ETH – akkor "ok", ha a backend szerint eth_up=1
     if (s.eth_up) {
-      setPillEl('pillEth', 'ok',  'ETH: csatlakozva');
+      setPillEl('pillEth', 'ok', 'ETH: IP ok');
     } else {
       setPillEl('pillEth', 'err', 'ETH: nincs IP');
     }
 
-    // Zóna vezérlő engedély (zone_en)
-    if (s.zone_en) {
-      setPillEl('pillZone', 'ok',   'Zóna vezérlő: engedélyezve');
-    } else {
-      setPillEl('pillZone', 'warn', 'Zóna vezérlő: tiltva');
-    }
+    // Zóna vezérlő / Fő szerver / Service – itt most csak az "engedélyezve" állapotot mutatjuk
+    setPillEl(
+      'pillZone',
+      s.zone_en ? 'ok' : 'warn',
+      'Zóna vezérlő: ' + (s.zone_en ? 'engedélyezve' : 'tiltva')
+    );
 
-    // Fő szerver engedély (main_en)
-    if (s.main_en) {
-      setPillEl('pillMain', 'ok',   'Fő szerver: engedélyezve');
-    } else {
-      setPillEl('pillMain', 'warn', 'Fő szerver: tiltva');
-    }
+    setPillEl(
+      'pillMain',
+      s.main_en ? 'ok' : 'warn',
+      'Fő szerver: ' + (s.main_en ? 'engedélyezve' : 'tiltva')
+    );
 
-    // Service engedély (service_en)
-    if (s.service_en) {
-      setPillEl('pillServ', 'ok',   'Service: engedélyezve');
-    } else {
-      setPillEl('pillServ', 'warn', 'Service: tiltva');
-    }
+    setPillEl(
+      'pillServ',
+      s.service_en ? 'ok' : 'warn',
+      'Service: ' + (s.service_en ? 'engedélyezve' : 'tiltva')
+    );
 
-    // Anchor státusz (ezt már korábban beraktuk)
-    const as = document.getElementById('anchorStatus');
+    // Anchor / szinkron állapot – a /api/status hb_* mezői alapján
+    const as = $('anchorStatus');
     if (as) {
-      const txt   = s.hb_text  || 'Anchor állapot: ismeretlen';
+      const txt = s.hb_text || 'Anchor állapot: ismeretlen';
       const level = s.hb_level || 'warn'; // ok / warn / err
       as.textContent = txt;
-      as.className   = 'anchor-status ' + level;
+      as.className = 'anchor-status ' + level;
     }
-
   } catch (e) {
     logln('[STATUS] hiba: ' + e.message);
-    setPillEl('pillBle',  'err', 'BLE: hiba');
-    setPillEl('pillEth',  'err', 'ETH: hiba');
-    setPillEl('pillZone', 'err', 'Zóna vezérlő: hiba');
-    setPillEl('pillMain', 'err', 'Fő szerver: hiba');
-    setPillEl('pillServ', 'err', 'Service: hiba');
+    setPillEl('pillEth', 'err', 'ETH: hiba');
+    setPillEl('pillBle', 'err', 'BLE: hiba');
   }
 }
 
