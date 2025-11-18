@@ -22,8 +22,8 @@
 #include "key_storage.h"
 
 #include "webserver.hpp"
-#include "globals.h"   // g_status, stb.
-#include "error_code_decoding.h"   // <--- ÚJ
+#include "globals.h"
+#include "error_code_decoding.h"
 
 extern "C" void ble_http_bridge_init(void);
 extern "C" void http_register_routes(httpd_handle_t h);

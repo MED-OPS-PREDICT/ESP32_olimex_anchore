@@ -2,6 +2,10 @@
 #include <stdint.h>
 #include <stddef.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #define ST_BLE_LINK      0x01
 #define ST_CFG_NOTIFY    0x02
 #define ST_SYNC_PRELOCK  0x04
@@ -11,3 +15,7 @@
 
 const char *anchor_status_to_text(uint8_t st, char *buf, size_t buflen);
 const char *anchor_status_short(uint8_t st);
+
+#ifdef __cplusplus
+}
+#endif
