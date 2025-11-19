@@ -106,8 +106,53 @@
     .anchor-status.warn { color:var(--warn); }
     .anchor-status.err  { color:var(--err); }
 
+    /* ===== Kapcsolati állapot sor ===== */
+    .status-wrap{
+      display:flex;
+      flex-direction:column;
+      align-items:flex-end;
+      gap:4px;
+      min-width:360px;              /* hogy ne törjön szét túl hamar */
+    }
+    .status-pills{
+      display:flex;
+      flex-wrap:wrap;
+      gap:6px;
+      justify-content:flex-end;
+    }
+    /* Anchor állapot – „pill” kinézetben */
+    .anchor-status{
+      display:inline-flex;
+      align-items:center;
+      padding:2px 10px;
+      border-radius:999px;
+      font-size:11px;
+      background:rgba(255,255,255,.03);
+      color:var(--muted);
+      white-space:nowrap;
+    }
+    .anchor-status.ok{
+      background:rgba(25,195,125,.18);
+      color:#9ce7c9;
+    }
+    .anchor-status.warn{
+      background:rgba(255,176,32,.18);
+      color:#ffd79b;
+    }
+    .anchor-status.err{
+      background:rgba(255,93,93,.18);
+      color:#ffc3c3;
+    }
 
-
+    @media (max-width: 900px){
+      .status-wrap{
+        align-items:flex-start;
+        min-width:0;
+      }
+      .status-pills{
+        justify-content:flex-start;
+      }
+    }
   .btn{
     appearance:none;
     border:0;
@@ -271,14 +316,19 @@
           <span>Kapcsolati állapot</span>
           <small>BLE + IP célok elérhetősége</small>
         </div>
-        <div class="toolbar">
-          <span id="pillBle"    class="pill warn">BLE: ismeretlen</span>
-          <span id="pillEth"    class="pill warn">ETH: ismeretlen</span>
-          <span id="pillZone"   class="pill warn">Zóna vezérlő: ismeretlen</span>
-          <span id="pillMain"   class="pill warn">Fő szerver: ismeretlen</span>
-          <span id="pillServ"   class="pill warn">Service: ismeretlen</span>
+
+        <div class="status-wrap">
+          <div class="status-pills">
+            <span id="pillBle"  class="pill warn">BLE: ismeretlen</span>
+            <span id="pillEth"  class="pill warn">ETH: ismeretlen</span>
+            <span id="pillZone" class="pill warn">Zóna vezérlő: ismeretlen</span>
+            <span id="pillMain" class="pill warn">Fő szerver: ismeretlen</span>
+            <span id="pillServ" class="pill warn">Service: ismeretlen</span>
+          </div>
+          <div id="anchorStatus" class="anchor-status warn">
+            Anchor állapot: ismeretlen
+          </div>
         </div>
-        <div id="anchorStatus" class="anchor-status">Anchor állapot: ismeretlen</div>
       </div>
       <div class="bd">
       <div class="form-grid">
@@ -822,31 +872,52 @@ async function refreshStatus() {
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const s = await r.json();
 
-    // ETH
+    // ---- BLE: csak ble_up alapján ----
+    if (s.ble_up) {
+      // van BLE link
+      if (s.hb_level && s.hb_level !== 'ok') {
+        // kapcsolat él, de a HB szerint gond van
+        setPillEl('pillBle', 'err', 'BLE: kapcsolódva (hiba)');
+      } else {
+        setPillEl('pillBle', 'ok', 'BLE: kapcsolódva');
+      }
+    } else {
+      // nincs BLE link
+      setPillEl('pillBle', 'err', 'BLE: nincs kapcsolat');
+    }
+
+    // ---- ETH ----
     if (s.eth_up) {
       setPillEl('pillEth', 'ok',  'ETH: van IP');
     } else {
       setPillEl('pillEth', 'err', 'ETH: nincs IP');
     }
 
-    // zóna / main / service engedély
-    setPillEl('pillZone',  s.zone_en   ? 'ok' : 'warn',
-              s.zone_en   ? 'Zóna vezérlő: engedélyezve' : 'Zóna vezérlő: tiltva');
+    // ---- zóna / main / service engedély ----
+    setPillEl('pillZone',  s.zone_en    ? 'ok' : 'warn',
+              s.zone_en    ? 'Zóna vezérlő: engedélyezve' : 'Zóna vezérlő: tiltva');
 
-    setPillEl('pillMain',  s.main_en   ? 'ok' : 'warn',
-              s.main_en   ? 'Fő szerver: engedélyezve'   : 'Fő szerver: tiltva');
+    setPillEl('pillMain',  s.main_en    ? 'ok' : 'warn',
+              s.main_en    ? 'Fő szerver: engedélyezve'   : 'Fő szerver: tiltva');
 
-    setPillEl('pillServ',  s.service_en? 'ok' : 'warn',
-              s.service_en? 'Service: engedélyezve'      : 'Service: tiltva');
+    setPillEl('pillServ',  s.service_en ? 'ok' : 'warn',
+              s.service_en ? 'Service: engedélyezve'      : 'Service: tiltva');
 
-    // Anchor / szinkron állapot – a /api/status hb_* mezői alapján
+    // ---- Anchor / szinkron szöveg ----
     const as = $('anchorStatus');
     if (as) {
-      const txt = s.hb_text || 'Anchor állapot: ismeretlen';
-      const level = s.hb_level || 'warn'; // ok / warn / err
-      as.textContent = txt;
-      as.className = 'anchor-status ' + level;
+      if (!s.ble_up) {
+        // ha nincs BLE link, ezt írjuk ki, ne a HB-t
+        as.textContent = 'Nincs BLE kapcsolat az anchorral';
+        as.className   = 'anchor-status err';
+      } else {
+        const txt   = s.hb_text  || 'Anchor állapot: ismeretlen';
+        const level = s.hb_level || 'warn';  // ok / warn / err
+        as.textContent = txt;
+        as.className   = 'anchor-status ' + level;
+      }
     }
+
   } catch (e) {
     logln('[STATUS] hiba: ' + e.message);
     setPillEl('pillEth', 'err', 'ETH: hiba');

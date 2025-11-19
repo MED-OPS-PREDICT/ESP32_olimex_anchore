@@ -167,12 +167,12 @@ void aes_sender_send_line(const char *line)
         sa.sin_port        = htons(IPS.dest[i].dest_port);
         sa.sin_addr.s_addr = IPS.dest[i].dest_ip.addr;
 
-        ESP_LOGI("AES_SENDER",
+        /*ESP_LOGI("AES_SENDER",
                  "sendto idx=%d ip=%08X port=%u len=%u",
                  i,
                  (unsigned)IPS.dest[i].dest_ip.addr,
                  (unsigned)IPS.dest[i].dest_port,
-                 (unsigned)enc_len);
+                 (unsigned)enc_len);*/
 
         sendto(s_sock, out, enc_len, 0,
                (struct sockaddr*)&sa, sizeof(sa));

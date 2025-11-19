@@ -3,6 +3,7 @@
 #include <stdbool.h>
 #include <string.h>
 #include <inttypes.h>
+#include <stdio.h>
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
@@ -15,6 +16,7 @@
 #include "cJSON.h"
 #include "ble.h"          // ble_register_notify_cb(), ble_send_get()
 #include "uwb_cfg_cli.h"  // uwb_cfg_cli_set_from_json()
+#include "hb_status.h"
 
 /* ====== Általános ====== */
 static const char* TAG = "HTTP_BRIDGE";
@@ -90,9 +92,75 @@ static struct {
     bool     have[H__COUNT];
 } s_cfg;
 
-static void reset_cfg(void){ memset(&s_cfg, 0, sizeof(s_cfg)); }
-static uint8_t s_cfg_section = 0;  // 0 = ismeretlen, 1 = CURRENT, 2 = DEFAULTS
+/* csak *egyszer* */
+static void reset_cfg(void)
+{
+    memset(&s_cfg, 0, sizeof(s_cfg));
+}
+
+/* csak ez az egy maradjon */
 static uint8_t s_tlv_section = 1;
+
+// "HB: HB status=11 uptime=4322864 ms sync_ms=3388" sorok parszolása
+// http_server.c elején legyen:
+// #include <inttypes.h>
+
+static void try_parse_hb_line(const uint8_t *p, uint16_t n)
+{
+    // minimális sanity check
+    const uint16_t MIN_HB_LEN = 17;   // ver,type,status,sync,uputime,net,zone,anchor
+    if (!p || n < MIN_HB_LEN) {
+        ESP_LOGW(TAG, "HB packet too short or NULL (len=%u)", (unsigned)n);
+        return;
+    }
+
+    // ----- bináris mezők (little endian) -----
+    uint8_t  ver   = p[0];
+    uint8_t  type  = p[1];
+    uint8_t  st    = p[2];
+
+    uint16_t sync  = (uint16_t)p[3]  | ((uint16_t)p[4]  << 8);
+    uint32_t up    = (uint32_t)p[5]  | ((uint32_t)p[6]  << 8)
+                                   | ((uint32_t)p[7]  << 16)
+                                   | ((uint32_t)p[8]  << 24);
+    uint16_t netid = (uint16_t)p[9]  | ((uint16_t)p[10] << 8);
+    uint16_t zone  = (uint16_t)p[11] | ((uint16_t)p[12] << 8);
+    uint32_t aid   = (uint32_t)p[13] | ((uint32_t)p[14] << 8)
+                                   | ((uint32_t)p[15] << 16)
+                                   | ((uint32_t)p[16] << 24);
+
+    // opcionális, de hasznos egy rövid log
+    /*ESP_LOGI(TAG,
+             "HB: ver=%u type=0x%02X status=0x%02X sync_ms=%u uptime_ms=%" PRIu32
+             " net_id=%u zone_id=%u anchor_id=0x%08" PRIX32,
+             (unsigned)ver,
+             (unsigned)type,
+             (unsigned)st,
+             (unsigned)sync,
+             (uint32_t)up,
+             (unsigned)netid,
+             (unsigned)zone,
+             (uint32_t)aid);*/
+
+    // ----- s_cfg frissítése -----
+    s_cfg.status            = (uint8_t)st;
+    s_cfg.have[H_STATUS]    = true;
+
+    s_cfg.uptime_ms         = up;
+    s_cfg.have[H_UPTIME_MS] = true;
+
+    s_cfg.sync_ms           = sync;
+    s_cfg.have[H_SYNC_MS]   = true;
+
+    s_cfg.network_id        = netid;
+    s_cfg.have[H_NETWORK_ID]= true;
+
+    s_cfg.zone_id           = zone;
+    s_cfg.have[H_ZONE_ID]   = true;
+
+    s_cfg.anchor_id         = aid;
+    s_cfg.have[H_ANCHOR_ID] = true;
+}
 
 /* ====== TLV blokk feldolgozása ====== */
 static bool parse_tlvs_and_update(const uint8_t* p, uint16_t n)

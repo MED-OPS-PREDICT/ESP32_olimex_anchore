@@ -62,7 +62,7 @@ void uwb_notify_cb(const uint8_t *data, uint16_t len, bool from_cfg)
                      (unsigned)sync_ms);
             char line[128];
             snprintf(line, sizeof(line),
-                     "HB status=%u uptime=%u ms sync_ms=%u",
+                     "HB: HB status=%u uptime=%u ms sync_ms=%u",
                      (unsigned)status,
                      (unsigned)uptime,
                      (unsigned)sync_ms);

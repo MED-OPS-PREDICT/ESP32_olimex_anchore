@@ -24,15 +24,10 @@
 #include "webserver.hpp"
 #include "globals.h"
 #include "error_code_decoding.h"
+#include "hb_status.h"
 
 extern "C" void ble_http_bridge_init(void);
 extern "C" void http_register_routes(httpd_handle_t h);
-
-// ÚJ: HB getterek http_server.c-ből
-extern "C" uint8_t  hb_get_status(void);
-extern "C" uint32_t hb_get_uptime_ms(void);
-extern "C" uint32_t hb_get_sync_ms(void);
-extern "C" bool     hb_has_status(void);
 
 #ifndef IPSTR
 #define IPSTR "%d.%d.%d.%d"
@@ -45,12 +40,6 @@ extern "C" bool     hb_has_status(void);
     ip4_addr3_16(ipaddr), \
     ip4_addr4_16(ipaddr)
 #endif
-
-#include "webserver.hpp"
-#include "globals.h"   // g_status, stb.
-
-extern "C" void ble_http_bridge_init(void);
-extern "C" void http_register_routes(httpd_handle_t h);
 
 static const char* TAG = "WEB";
 
@@ -832,45 +821,3 @@ esp_err_t webserver_stop(){
     httpd_stop(s_http); s_http=nullptr; return ESP_OK;
 }
 
-// "HB: HB status=11 uptime=4322864 ms sync_ms=3388" sorok parszolása
-static void try_parse_hb_line(const uint8_t *p, uint16_t n)
-{
-    if (!p || n == 0) {
-        return;
-    }
-
-    // legyen 0-terminált string
-    char buf[96];
-    if (n >= sizeof(buf)) {
-        n = sizeof(buf) - 1;
-    }
-    memcpy(buf, p, n);
-    buf[n] = 0;
-
-    // csak ha "HB:"-val kezdődik
-    if (strncmp(buf, "HB:", 3) != 0) {
-        return;
-    }
-
-    unsigned st   = 0;
-    unsigned up   = 0;
-    unsigned sync = 0;
-
-    int matched = sscanf(buf,
-                         "HB: HB status=%u uptime=%u ms sync_ms=%u",
-                         &st, &up, &sync);
-    if (matched >= 1) {
-        if (st <= 0xFF) {
-            s_cfg.status = (uint8_t)st;
-            s_cfg.have[H_STATUS] = true;
-        }
-    }
-    if (matched >= 2) {
-        s_cfg.uptime_ms = up;
-        s_cfg.have[H_UPTIME_MS] = true;
-    }
-    if (matched >= 3) {
-        s_cfg.sync_ms = sync;
-        s_cfg.have[H_SYNC_MS] = true;
-    }
-}
