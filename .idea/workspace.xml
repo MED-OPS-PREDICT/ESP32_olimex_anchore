@@ -6,7 +6,10 @@
   <component name="ChangeListManager">
     <list default="true" id="d7727baf-cd08-430d-884d-b4e040b4a9ee" name="Changes" comment="a">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/ethernet/ethernet_sender/ble_logger.c" beforeDir="false" afterPath="$PROJECT_DIR$/components/ethernet/ethernet_sender/ble_logger.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/ethernet/ethernet_sender/ble_logger.h" beforeDir="false" afterPath="$PROJECT_DIR$/components/ethernet/ethernet_sender/ble_logger.h" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/components/webserver/http_server.c" beforeDir="false" afterPath="$PROJECT_DIR$/components/webserver/http_server.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/webserver/spiffs/super_user.html" beforeDir="false" afterPath="$PROJECT_DIR$/components/webserver/spiffs/super_user.html" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/components/webserver/webserver.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/components/webserver/webserver.cpp" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />

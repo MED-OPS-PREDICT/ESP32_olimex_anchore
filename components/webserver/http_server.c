@@ -108,7 +108,7 @@ static uint8_t s_tlv_section = 1;
 static void try_parse_hb_line(const uint8_t *p, uint16_t n)
 {
     // minimális sanity check
-    const uint16_t MIN_HB_LEN = 17;   // ver,type,status,sync,uputime,net,zone,anchor
+    const uint16_t MIN_HB_LEN = 13;   // ver,type,status,sync,uputime,net,zone,anchor
     if (!p || n < MIN_HB_LEN) {
         ESP_LOGW(TAG, "HB packet too short or NULL (len=%u)", (unsigned)n);
         return;

@@ -663,17 +663,20 @@ static esp_err_t api_status_get(httpd_req_t* req){
                       g_status.state==ST_ERR  ? "err"  : "off");
 
     bool eth_ok = (NET.ip.addr != 0);
-
     // HB / anchor állapot (BLE TLV-ből)
     uint8_t  hb_st   = hb_get_status();
     uint32_t hb_up   = hb_get_uptime_ms();
     uint32_t hb_sync = hb_get_sync_ms();
 
+    // "van HB" ha valaha jött már heartbeat
+    bool have_hb = (hb_up != 0);
+
     char hb_text[96];
     const char *hb_txt_ptr = "Anchor állapot: ismeretlen";
     const char *hb_level   = "warn";   // ok / warn / err
 
-    if (hb_has_status()) {
+    if (have_hb) {
+        // mindig a legutóbbi HB alapján írunk
         anchor_status_to_text(hb_st, hb_text, sizeof(hb_text));
         hb_txt_ptr = hb_text;
 
@@ -687,6 +690,7 @@ static esp_err_t api_status_get(httpd_req_t* req){
             hb_level = "err";
         }
     } else {
+        // még nem jött egyetlen HB sem → fallback
         if (g_status.state == ST_OK) {
             hb_txt_ptr = "Anchor: OK (csak összefoglalt állapot)";
             hb_level   = "ok";

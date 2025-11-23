@@ -23,28 +23,32 @@ static uint8_t  g_last_hb_status = 0;
 static uint32_t g_last_hb_uptime = 0;
 static uint16_t g_last_hb_sync   = 0;
 
+uint32_t uptime = 0;
+uint32_t sync_ms = 0;
+
+// forward deklaráció (prototípus)
+void send_uwb_udp(const uint8_t *data, size_t len);
+
 // FONTOS: NE legyen static, mert header-ben nem static a deklaráció
 void uwb_notify_cb(const uint8_t *data, uint16_t len, bool from_cfg)
 {
-    // CFG notify most nem érdekel, csak DATA
+    /* ================= CFG TLV-k (HB) ================= */
     if (from_cfg) {
-        // életjel/állapot TLV-k
         if (len >= 3 && data[0] == T_STATUS && data[1] == 1) {
             uint8_t status = data[2];
 
             char msg[96];
             anchor_status_to_text(status, msg, sizeof(msg));
-
             printf("Anchor HB: status=0x%02X  %s\n", status, msg);
 
-            // keresd meg benne az UPTIME_MS és SYNC_MS TLV-ket
-            const uint8_t *p = data + 3;
+            const uint8_t *p   = data + 3;
             const uint8_t *end = data + len;
             uint32_t uptime = 0;
             uint16_t sync_ms = 0;
 
             while (p + 2 <= end) {
-                uint8_t t = p[0], l = p[1];
+                uint8_t t = p[0];
+                uint8_t l = p[1];
                 p += 2;
                 if (p + l > end) break;
 
@@ -56,59 +60,64 @@ void uwb_notify_cb(const uint8_t *data, uint16_t len, bool from_cfg)
                 p += l;
             }
 
-            ESP_LOGI("HB", "HB status=%u uptime=%u ms sync_ms=%u",
-                     (unsigned)status,
-                     (unsigned)uptime,
-                     (unsigned)sync_ms);
+            g_last_hb_status = status;
+            g_last_hb_uptime = uptime;
+            g_last_hb_sync   = (uint16_t)sync_ms;
+
+            ESP_LOGI("HB",
+                     "HB status=%" PRIu8 " uptime=%" PRIu32 " ms sync_ms=%" PRIu32,
+                     (uint8_t)status,
+                     (uint32_t)uptime,
+                     (uint32_t)sync_ms);
+
             char line[128];
             snprintf(line, sizeof(line),
-                     "HB: HB status=%u uptime=%u ms sync_ms=%u",
-                     (unsigned)status,
-                     (unsigned)uptime,
-                     (unsigned)sync_ms);
+                     "HB: HB status=%" PRIu8 " uptime=%" PRIu32 " ms sync_ms=%" PRIu32,
+                     (uint8_t)status,
+                     (uint32_t)uptime,
+                     (uint32_t)sync_ms);
             aes_sender_send_line(line);
             return;
         }
-
-        // egyéb CFG keretek (GET/SET/STATE) – ha kell, külön logold
         return;
     }
 
-    if (len != sizeof(UWBPacket)) {
-        ESP_LOGW(TAG_UWB, "DATA len=%u (var=%u), ignorálom",
-                 (unsigned)len, (unsigned)sizeof(UWBPacket));
+    /* ================= RÉGI 0xAB PREFIXES UWB PACKET ================= */
+    if (len == sizeof(UWBPacket)) {
+        UWBPacket pkt;
+        memcpy(&pkt, data, sizeof(pkt));
+
+        if (pkt.prefix != 0xAB) {
+            ESP_LOGW(TAG_UWB, "prefix=0x%02X != 0xAB", pkt.prefix);
+            return;
+        }
+
+        ESP_LOGI(TAG_UWB,
+                 "UWB: ver=%u sync=%u tag_seq=%u batt=%u%% anchor=0x%08" PRIX32
+                 " tag=0x%08" PRIX32 " ts=%" PRIu64,
+                 pkt.version, pkt.sync_seq, pkt.tag_seq,
+                 pkt.batt_pct,
+                 pkt.anchor_id, pkt.tag_id,
+                 (uint64_t)pkt.timestamp);
+
+        char line[200];
+        snprintf(line, sizeof(line),
+                 "UWB: ver=%u sync=%u tag_seq=%u batt=%u%% anchor=0x%08" PRIX32
+                 " tag=0x%08" PRIX32 " ts=%" PRIu64,
+                 pkt.version, pkt.sync_seq, pkt.tag_seq,
+                 pkt.batt_pct,
+                 pkt.anchor_id, pkt.tag_id,
+                 (uint64_t)pkt.timestamp);
+        aes_sender_send_line(line);
         return;
     }
 
-    UWBPacket pkt;
-    memcpy(&pkt, data, sizeof(pkt));
+    /* ================= Minden más: RAW továbbítás ================= */
+    ESP_LOGW(TAG_UWB,
+             "ISMERETLEN UWB packet, len=%u – RAW hex továbbítva",
+             (unsigned)len);
+    send_uwb_udp(data, len);
 
-    if (pkt.prefix != 0xAB) {
-        ESP_LOGW(TAG_UWB, "prefix=0x%02X != 0xAB", pkt.prefix);
-        return;
-    }
-
-    // Szép, soros logra való egy sor
-    ESP_LOGI(TAG_UWB,
-             "ver=%u sync=%u tag_seq=%u anchor=0x%08" PRIX32
-             " tag=0x%08" PRIX32 " ts=%" PRIu64,
-             pkt.version,
-             pkt.sync_seq,
-             pkt.tag_seq,
-             pkt.anchor_id,
-             pkt.tag_id,
-             (uint64_t)pkt.timestamp);
-    char line[160];
-    snprintf(line, sizeof(line),
-             "ver=%u sync=%u tag_seq=%u anchor=0x%08" PRIX32
-             " tag=0x%08" PRIX32 " ts=%" PRIu64,
-             pkt.version,
-             pkt.sync_seq,
-             pkt.tag_seq,
-             pkt.anchor_id,
-             pkt.tag_id,
-             (uint64_t)pkt.timestamp);
-    aes_sender_send_line(line);
 }
 
 uint8_t  status_get_last_hb_status(void) { return g_last_hb_status; }

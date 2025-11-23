@@ -8,8 +8,9 @@
 typedef struct {
     uint8_t  prefix;
     uint8_t  version;
-    uint8_t  sync_seq;
+    uint8_t  sync_seq;     // ← ez jön előbb
     uint8_t  tag_seq;
+    uint8_t  batt_pct;     // ← batt csak ezután
     uint32_t anchor_id;
     uint32_t tag_id;
     uint64_t timestamp;
