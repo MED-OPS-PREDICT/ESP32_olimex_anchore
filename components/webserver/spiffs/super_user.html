@@ -598,7 +598,8 @@ function fmtZoneIdHex(v) {
 }
 
 function cell(v){
-  return `<td class="mono">${v===undefined||v===null?'-':v}</td>`;
+  // ha nincs érték, kérdőjel jelenjen meg
+  return `<td class="mono">${(v===undefined || v===null || v==='') ? '?' : v}</td>`;
 }
 
 function renderGroup(tblId, items, cfg){
@@ -619,8 +620,8 @@ function renderGroup(tblId, items, cfg){
 
 const key   = it.k;
 const label = it.label || key;
-let esp = (g.esp && g.esp[key] !== undefined) ? g.esp[key] : '-';
-let dwm = (g.dwm && g.dwm[key] !== undefined) ? g.dwm[key] : '-';
+let esp = (g.esp && g.esp[key] !== undefined) ? g.esp[key] : '';
+let dwm = (g.dwm && g.dwm[key] !== undefined) ? g.dwm[key] : '';
 
 // ZONE_ID: hex formázás a megjelenítéshez
 if (key === 'ZONE_ID') {
@@ -634,7 +635,7 @@ if (key === 'ZONE_ID') {
     else if (g.dwm.ZONE_ID !== undefined) src = g.dwm.ZONE_ID;
   }
   if (src != null) dwm = fmtZoneIdHex(src);
-  else dwm = '-';
+  else dwm = '';
 }
 
 // placeholder – ZONE_ID-nek hex minta
@@ -712,6 +713,30 @@ async function doDwmGet() {
     logln('[DWM] kész (HTTP): ' + JSON.stringify(j));
   } catch (e) {
     logln('[DWM] hiba (HTTP): ' + e.message);
+  } finally {
+    setBusy(false);
+  }
+}
+
+// ===== DWM RAM-cache GET (/api/dwm_last) – gyors, nem indít új BLE lekérdezést =====
+async function doDwmGetCached() {
+  if (gBusy) return;
+  setBusy(true);
+  logln('[UI] LEKÉR DWM (cache /api/dwm_last)');
+  try {
+    const hdr = {
+      'Accept': 'application/json',
+      'Authorization': 'Basic ' + btoa('admin:admin')
+    };
+    const r = await fetch('/api/dwm_last', { cache: 'no-store', headers: hdr });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+
+    const j = await r.json();
+    g.dwm = j;
+    renderAll();
+    logln('[DWM] kész (cache): ' + JSON.stringify(j));
+  } catch (e) {
+    logln('[DWM] hiba (cache): ' + e.message);
   } finally {
     setBusy(false);
   }
@@ -930,6 +955,13 @@ $('btnEspGet'    ).addEventListener('click', doEspGet);
 $('btnApply'     ).addEventListener('click', doSetBoth);
 
 renderAll();
+
+// Oldalbetöltéskor automatikusan:
+//  - ESP config lekérdezés (/api/config) – gyors
+//  - DWM RAM-cache lekérdezés (/api/dwm_last) – gyors
+doEspGet();
+doDwmGetCached();
+
 </script>
 </body>
 </html>
