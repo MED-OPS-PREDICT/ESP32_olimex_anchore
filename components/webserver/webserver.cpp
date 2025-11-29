@@ -489,14 +489,50 @@ static bool parse_str(const char* body, const char* key, char* out, size_t out_s
     return true;
 }
 
-static bool parse_u32(const char* body, const char* key, uint32_t& out){
-    const char* v=nullptr; if(!find_key(body,key,&v)) return false; char* end=nullptr;
-    if(*v=='\"') out=strtoul(v+1,&end,16); else out=strtoul(v,&end,10); return true;
+static bool parse_u32(const char* body, const char* key, uint32_t& out)
+{
+    const char* v = nullptr;
+    if (!find_key(body, key, &v)) return false;
+
+    char* end = nullptr;
+
+    if (*v == '\"') {
+        // String érték: lehet "10000", "0x2710", stb.
+        v++; // az idézőjel UTÁN vagyunk
+        int base = 10;
+        if (v[0] == '0' && (v[1] == 'x' || v[1] == 'X')) {
+            v += 2;
+            base = 16;
+        }
+        out = strtoul(v, &end, base);
+    } else {
+        // Szám: decimális
+        out = strtoul(v, &end, 10);
+    }
+    return true;
 }
-static bool parse_i32(const char* body, const char* key, int32_t& out){
-    const char* v=nullptr; if(!find_key(body,key,&v)) return false; char* end=nullptr;
-    if(*v=='\"') out=(int32_t)strtol(v+1,&end,16); else out=(int32_t)strtol(v,&end,10); return true;
+
+static bool parse_i32(const char* body, const char* key, int32_t& out)
+{
+    const char* v = nullptr;
+    if (!find_key(body, key, &v)) return false;
+
+    char* end = nullptr;
+
+    if (*v == '\"') {
+        v++;
+        int base = 10;
+        if (v[0] == '0' && (v[1] == 'x' || v[1] == 'X')) {
+            v += 2;
+            base = 16;
+        }
+        out = (int32_t)strtol(v, &end, base);
+    } else {
+        out = (int32_t)strtol(v, &end, 10);
+    }
+    return true;
 }
+
 static bool parse_u16(const char* body, const char* key, uint16_t& out){ uint32_t t; if(!parse_u32(body,key,t)) return false; out=(uint16_t)t; return true; }
 static bool parse_u8 (const char* body, const char* key, uint8_t&  out){ uint32_t t; if(!parse_u32(body,key,t)) return false; out=(uint8_t)t;  return true; }
 
