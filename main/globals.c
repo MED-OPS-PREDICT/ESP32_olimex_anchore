@@ -10,11 +10,12 @@ volatile int eth_up = 0;
 void globals_init(void)
 {
     bool loaded = false;
-
     nvs_handle_t h;
-    esp_err_t r = nvs_open("netcfg", NVS_READONLY, &h);
+    esp_err_t r = nvs_open("netcfg", NVS_READONLY, &h);   // <<< ugyanaz a namespace, mint mentéskor
+
     if (r == ESP_OK) {
         uint32_t ip, gw, msk, dns1, dns2;
+
         if (nvs_get_u32(h, "ip",   &ip)   == ESP_OK &&
             nvs_get_u32(h, "gw",   &gw)   == ESP_OK &&
             nvs_get_u32(h, "msk",  &msk)  == ESP_OK &&
@@ -28,11 +29,12 @@ void globals_init(void)
             NET.dns2.addr    = dns2;
             loaded = true;
         }
+
         nvs_close(h);
     }
 
     if (!loaded) {
-        /* Ha nincs teljes/érvényes NVS bejegyzés → alap értékek */
+        // csak akkor default, ha nincs érvényes NVS konfig
         IP4_ADDR(&NET.ip,   192,168,0,191);
         IP4_ADDR(&NET.gw,   192,168,0,1);
         IP4_ADDR(&NET.mask, 255,255,255,0);
@@ -40,7 +42,6 @@ void globals_init(void)
         IP4_ADDR(&NET.dns2, 8,8,8,8);
     }
 
-    /* UDP port / DHCP: vagy itt is NVS-ből, vagy legalább default */
     NET.udp_port = 12345;
     NET.use_dhcp = 0;
 

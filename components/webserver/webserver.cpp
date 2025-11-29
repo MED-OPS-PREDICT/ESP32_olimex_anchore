@@ -797,12 +797,14 @@ esp_err_t webserver_start(){
         /* 2a) ha volt mentett cfg, azt tekintjük igaznak:
                g_cfg -> NET/IPS */
         globals_from_gcfg();
+
+        /* 2a/bis) AZONNAL alkalmazzuk a NET-ből az IP-t az ethernetre is */
+        ethernet_reapply_ip_from_net();
     } else {
         /* 2b) ha nincs NVS, indulunk a compile-time default NET/IPS-ből,
                és abból gyártunk g_cfg-et a UI-nak */
         gcfg_from_globals();
-        /* opcionális: ezt az alapot is elmentheted NVS-be, ha szeretnéd */
-        // esp_cfg_save_to_nvs();
+        // opcionálisan: esp_cfg_save_to_nvs();
     }
 
     aes_sender_init();
