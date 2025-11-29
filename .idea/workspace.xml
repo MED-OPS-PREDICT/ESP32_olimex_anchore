@@ -5,8 +5,8 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="d7727baf-cd08-430d-884d-b4e040b4a9ee" name="Changes" comment="a">
-      <change beforePath="$PROJECT_DIR$/main/globals.c" beforeDir="false" afterPath="$PROJECT_DIR$/main/globals.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/main/globals.h" beforeDir="false" afterPath="$PROJECT_DIR$/main/globals.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/webserver/http_server.c" beforeDir="false" afterPath="$PROJECT_DIR$/components/webserver/http_server.c" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -29,12 +29,12 @@
     &quot;assignee&quot;: &quot;Padre66&quot;
   }
 }</component>
-  <component name="GithubPullRequestsUISettings"><![CDATA[{
-  "selectedUrlAndAccountId": {
-    "url": "https://github.com/Padre66/ESP32_olimex_anchore.git",
-    "accountId": "1f9bd467-a066-4d0d-b563-00e159980121"
+  <component name="GithubPullRequestsUISettings">{
+  &quot;selectedUrlAndAccountId&quot;: {
+    &quot;url&quot;: &quot;https://github.com/Padre66/ESP32_olimex_anchore.git&quot;,
+    &quot;accountId&quot;: &quot;1f9bd467-a066-4d0d-b563-00e159980121&quot;
   }
-}]]></component>
+}</component>
   <component name="ProjectColorInfo">{
   &quot;associatedIndex&quot;: 4
 }</component>
@@ -88,7 +88,8 @@
       <updated>1760874716569</updated>
       <workItem from="1764359861948" duration="168000" />
       <workItem from="1764435869676" duration="2224000" />
-      <workItem from="1764444644970" duration="4944000" />
+      <workItem from="1764444644970" duration="5391000" />
+      <workItem from="1764453885248" duration="132000" />
     </task>
     <task id="LOCAL-00001" summary="a1">
       <option name="closed" value="true" />
@@ -378,7 +379,15 @@
       <option name="project" value="LOCAL" />
       <updated>1764452435978</updated>
     </task>
-    <option name="localTasksCounter" value="37" />
+    <task id="LOCAL-00037" summary="a">
+      <option name="closed" value="true" />
+      <created>1764452833668</created>
+      <option name="number" value="00037" />
+      <option name="presentableId" value="LOCAL-00037" />
+      <option name="project" value="LOCAL" />
+      <updated>1764452833668</updated>
+    </task>
+    <option name="localTasksCounter" value="38" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">

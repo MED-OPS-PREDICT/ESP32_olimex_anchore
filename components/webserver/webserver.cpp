@@ -852,6 +852,7 @@ esp_err_t webserver_start(){
     opt.uri="/api/config";    httpd_register_uri_handler(s_http,&opt);
     opt.uri="/api/status";    httpd_register_uri_handler(s_http,&opt);
     opt.uri="/api/dwm_get";   httpd_register_uri_handler(s_http,&opt);
+    opt.uri="/api/dwm_last";  httpd_register_uri_handler(s_http,&opt);   // ÚJ
 
     // Root és catch-all → login
     httpd_uri_t root{}; root.method=HTTP_GET; root.uri="/";  root.handler=login_get; httpd_register_uri_handler(s_http,&root);

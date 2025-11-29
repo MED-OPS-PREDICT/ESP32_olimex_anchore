@@ -429,7 +429,7 @@ static esp_err_t dwm_get_handler(httpd_req_t* req)
     }
 
     /* JSON válasz */
-    cJSON* j = cJSON_CreateObject();
+    /*cJSON* j = cJSON_CreateObject();
 
     // Állapot
     if(s_cfg.have[H_STATUS])    cJSON_AddNumberToObject(j,"STATUS",    s_cfg.status);
@@ -484,11 +484,42 @@ static esp_err_t dwm_get_handler(httpd_req_t* req)
     httpd_resp_set_type(req,"application/json");
     httpd_resp_sendstr(req, out ? out : "{}");
     if(out) free(out);
+    cJSON_Delete(j);*/
+
+    /* JSON válasz */
+    cJSON* j = cJSON_CreateObject();
+    build_cfg_json(j);
+
+    char* out = cJSON_PrintUnformatted(j);
+    httpd_resp_set_type(req,"application/json");
+    httpd_resp_sendstr(req, out ? out : "{}");
+    if(out) free(out);
     cJSON_Delete(j);
 
     xSemaphoreGive(s_ble_lock);
     return ESP_OK;
 }
+
+/* ====== HTTP handler: /api/dwm_last ====== */
+/* Csak a RAM-ban lévő utolsó s_cfg tartalmat adja vissza, BLE GET nélkül. */
+static esp_err_t dwm_last_handler(httpd_req_t* req)
+{
+    if(!s_ble_lock) s_ble_lock = xSemaphoreCreateMutex();
+    xSemaphoreTake(s_ble_lock, portMAX_DELAY);
+
+    cJSON* j = cJSON_CreateObject();
+    build_cfg_json(j);
+
+    char* out = cJSON_PrintUnformatted(j);
+    httpd_resp_set_type(req,"application/json");
+    httpd_resp_sendstr(req, out ? out : "{}");
+    if(out) free(out);
+    cJSON_Delete(j);
+
+    xSemaphoreGive(s_ble_lock);
+    return ESP_OK;
+}
+
 
 /* ====== HTTP route regisztrálás ====== */
 
@@ -506,10 +537,18 @@ static const httpd_uri_t uri_dwm_set = {
     .user_ctx = NULL
 };
 
+static const httpd_uri_t uri_dwm_last = {
+    .uri      = "/api/dwm_last",
+    .method   = HTTP_GET,
+    .handler  = dwm_last_handler,
+    .user_ctx = NULL
+};
+
 void http_register_routes(httpd_handle_t h)
 {
     httpd_register_uri_handler(h, &uri_dwm_get);
     httpd_register_uri_handler(h, &uri_dwm_set);
+    httpd_register_uri_handler(h, &uri_dwm_last);   // ÚJ
 }
 
 /* ====== Init: sor, szemaforok, callback, worker ====== */
