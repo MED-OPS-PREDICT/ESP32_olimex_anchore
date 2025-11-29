@@ -117,8 +117,8 @@ static void nvs_init_or_erase(void){
 
 void app_main(void)
 {
-    globals_init();
-    nvs_init_or_erase();
+    nvs_init_or_erase();           // 1) Először NVS
+    globals_init();                // 2) Ezután olvasd be a globális konfigot (IP stb.)
     esp_event_loop_create_default();
     esp_netif_init();
 
