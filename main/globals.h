@@ -51,3 +51,11 @@ extern uint32_t g_hb_uptime;
 extern uint16_t g_hb_sync_ms;
 extern char g_hb_text[96];
 extern char g_hb_level[16];
+
+typedef struct {
+    float distance;
+    int quality;
+    bool valid;   // volt-e már érvényes mérés, vagy még soha
+} uwb_measurement_t;
+
+extern uwb_measurement_t g_last_uwb;

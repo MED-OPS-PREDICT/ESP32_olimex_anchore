@@ -68,3 +68,9 @@ uint32_t g_hb_uptime = 0;
 uint16_t g_hb_sync_ms = 0;
 char g_hb_text[96] = "Anchor állapot: ismeretlen";
 char g_hb_level[16] = "warn";
+
+uwb_measurement_t g_last_uwb = {
+    .distance = 0.0f,
+    .quality = 0,
+    .valid = false
+};
