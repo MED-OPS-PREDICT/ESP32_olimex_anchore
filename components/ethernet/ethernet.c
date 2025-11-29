@@ -87,6 +87,7 @@ esp_err_t ethernet_init(ethernet_ctx_t *ctx) {
     // netif
     esp_netif_config_t netif_cfg = ESP_NETIF_DEFAULT_ETH();
     ctx->netif = esp_netif_new(&netif_cfg);
+    s_eth      = ctx->netif;                    // <<< ÚJ: elmentjük globálisan is
     ESP_ERROR_CHECK(esp_netif_set_default_netif(ctx->netif));
 
     // események
@@ -120,6 +121,13 @@ esp_err_t ethernet_init(ethernet_ctx_t *ctx) {
     ESP_LOGI(TAG, "init done");
 
     return ESP_OK;
+}
+
+void ethernet_reapply_ip_from_net(void)
+{
+    if (s_eth) {
+        apply_static_ip(s_eth);
+    }
 }
 
 void ethernet_deinit(ethernet_ctx_t *ctx) {

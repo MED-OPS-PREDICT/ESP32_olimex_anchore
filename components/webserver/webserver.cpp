@@ -29,6 +29,8 @@
 extern "C" void ble_http_bridge_init(void);
 extern "C" void http_register_routes(httpd_handle_t h);
 
+extern "C" void ethernet_reapply_ip_from_net(void);
+
 #ifndef IPSTR
 #define IPSTR "%d.%d.%d.%d"
 #endif
@@ -578,6 +580,8 @@ static esp_err_t api_config_post(httpd_req_t* req)
 
     // 3) tartós mentés NVS-be
     esp_cfg_save_to_nvs();
+
+    ethernet_reapply_ip_from_net();
 
     httpd_resp_set_type(req, "application/json");
     return httpd_resp_sendstr(req, "{\"ok\":true}\n");

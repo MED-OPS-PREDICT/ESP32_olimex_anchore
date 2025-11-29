@@ -17,6 +17,8 @@ esp_err_t ethernet_init(ethernet_ctx_t *ctx);
 /** Leállít és felszabadít. Opcionális. */
 void ethernet_deinit(ethernet_ctx_t *ctx);
 
+void ethernet_reapply_ip_from_net(void);
+
 #ifdef __cplusplus
 }
 #endif
