@@ -859,12 +859,18 @@ async function fetchStatsOnce(){
     updateLastTables(stat);
     updateCpuMemGauges(stat);
 
-    const ts = stat.ts ? new Date(stat.ts*1000) : new Date();
-    $('#lblLastUpdate').textContent = 'Utolsó frissítés: ' +
-      ts.toLocaleTimeString('hu-HU',{hour12:false});
+    const ts  = stat.ts ? new Date(stat.ts*1000) : new Date();
+    const lbl = $('#lblLastUpdate');
+    if (lbl) {
+      lbl.textContent = 'Utolsó frissítés: ' +
+        ts.toLocaleTimeString('hu-HU',{hour12:false});
+    }
   }catch(e){
     console.error('[stats] hiba', e);
-    $('#lblLastUpdate').textContent = 'Utolsó frissítés: hiba – ' + e.message;
+    const lbl = $('#lblLastUpdate');
+    if (lbl) {
+      lbl.textContent = 'Utolsó frissítés: hiba – ' + e.message;
+    }
   }
 }
 

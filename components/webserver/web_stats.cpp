@@ -116,13 +116,19 @@ static esp_err_t api_stats_get(httpd_req_t *req)
     size_t ps_total = 0;
 #endif
 
+    uint64_t up_sec = up_ms / 1000ULL;
+    double   loadF  = ((double)loadT) / 100.0;  // 0..1 – ezt várja a frontend cpu.load-ként
+
     char buf[1024];
     int n = snprintf(buf, sizeof(buf),
         "{"
+          "\"ts\":%" PRIu64 ","              // csak a böngésző órájához, lehet up_sec is
           "\"uptime_ms\":%" PRIu64 ","
+          "\"uptime_sec\":%" PRIu64 ","      // EZT használja a web_stats.html
           "\"cpu\":{"
             "\"mhz\":%u,"
             "\"cores\":2,"
+            "\"load\":%.3f,"                 // 0..1 – donut + KPI ehhez igazodik
             "\"cores_load\":[%u,%u],"
             "\"total\":%u"
           "},"
@@ -145,8 +151,11 @@ static esp_err_t api_stats_get(httpd_req_t *req)
             "\"psram_used\":%u"
           "}"
         "}\n",
-        up_ms,
-        (unsigned)CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ,
+        (unsigned long long)up_sec,                // ts
+        (unsigned long long)up_ms,                 // uptime_ms
+        (unsigned long long)up_sec,                // uptime_sec
+        (unsigned)CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ, // mhz
+        loadF,                                     // cpu.load (0..1)
         (unsigned)load0,
         (unsigned)load1,
         (unsigned)loadT,
@@ -166,6 +175,7 @@ static esp_err_t api_stats_get(httpd_req_t *req)
     httpd_resp_set_type(req, "application/json");
     return httpd_resp_send(req, buf, n);
 }
+
 
 /* ====== /stats HTML oldal (SPIFFS-ből) ====== */
 

@@ -4,6 +4,7 @@ idf_component_register(
     "http_server.c"
     "uwb_cfg_cli.c"
     "web_stats.c"
+    "web_stats.cpp"
   INCLUDE_DIRS "."
   PRIV_REQUIRES main key_storage
   REQUIRES esp_http_server nvs_flash esp_netif spiffs mbedtls esp_timer json
