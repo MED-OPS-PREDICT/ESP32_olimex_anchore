@@ -1,0 +1,748 @@
+<!doctype html>
+<html lang="hu">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Anchor statisztika – UWB Anchor</title>
+
+<!-- Chart.js a grafikonokhoz -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+  :root{
+    --bg:#0b1522;
+    --panel:#0e1d2b;
+    --panel2:#0a1825;
+    --muted:#9fb0c7;
+    --txt:#e9f1fb;
+    --acc:#2da8ff;
+    --ok:#19c37d;
+    --warn:#ffb020;
+    --err:#ff5d5d;
+  }
+  *{box-sizing:border-box;}
+
+  body{
+    margin:0;
+    min-height:100vh;
+    background:linear-gradient(180deg,#091321,#0b1522);
+    color:var(--txt);
+    font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,Ubuntu,sans-serif;
+  }
+
+  header{
+    padding:14px 18px;
+    border-bottom:1px solid rgba(255,255,255,.06);
+    display:flex;
+    gap:12px;
+    align-items:center;
+    justify-content:space-between;
+  }
+  h1{margin:0;font-size:16px;}
+
+  .header-left{
+    display:flex;
+    flex-direction:column;
+    gap:3px;
+  }
+
+  .wrap{
+    padding:16px;
+    display:grid;
+    gap:14px;
+    max-width:1840px;
+    margin:0 auto;
+  }
+
+  .card{
+    background:color-mix(in srgb,var(--panel) 92%,#000 8%);
+    border:1px solid rgba(255,255,255,.08);
+    border-radius:16px;
+    box-shadow:0 10px 34px rgba(0,0,0,.35);
+  }
+  .card.full{
+    grid-column:1 / -1;
+  }
+  .card .hd{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding:10px 14px;
+    border-bottom:1px solid rgba(255,255,255,.06);
+    gap:8px;
+  }
+  .card .hd-title{
+    display:flex;
+    flex-direction:column;
+    gap:2px;
+  }
+  .card .hd-title small{
+    font-size:11px;
+    color:var(--muted);
+  }
+  .card .bd{padding:12px 14px 14px;}
+
+  .btn{
+    appearance:none;
+    border:0;
+    border-radius:12px;
+    padding:8px 12px;
+    background:linear-gradient(180deg,var(--acc),#57b6ff);
+    color:#00203a;
+    font-weight:700;
+    cursor:pointer;
+    font-size:13px;
+    white-space:nowrap;
+    text-decoration:none;
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+  }
+  .btn.ghost{
+    background:transparent;
+    color:var(--txt);
+    border:1px solid rgba(255,255,255,.18);
+  }
+  .btn:disabled{opacity:.6;cursor:default;}
+
+  .toolbar{
+    display:flex;
+    flex-wrap:wrap;
+    gap:8px;
+    align-items:center;
+    justify-content:flex-end;
+  }
+
+  .muted{color:var(--muted);}
+  .mono{
+    font-family:ui-monospace,Menlo,Consolas,monospace;
+    font-size:12px;
+  }
+
+  .grid-main{
+    display:grid;
+    gap:14px;
+    grid-template-columns:minmax(0,2fr) minmax(0,1.3fr);
+  }
+
+  .grid-bottom{
+    display:grid;
+    gap:14px;
+    grid-template-columns:repeat(auto-fit,minmax(380px,1fr));
+  }
+
+  .stat-row{
+    display:flex;
+    flex-wrap:wrap;
+    gap:10px;
+    margin-top:4px;
+  }
+
+  .stat-pill{
+    padding:6px 10px;
+    border-radius:999px;
+    font-size:12px;
+    background:rgba(255,255,255,.04);
+  }
+
+  .stat-pill.ok{
+    background:rgba(25,195,125,.18);
+    color:#9ce7c9;
+  }
+  .stat-pill.warn{
+    background:rgba(255,176,32,.18);
+    color:#ffd79b;
+  }
+  .stat-pill.err{
+    background:rgba(255,93,93,.18);
+    color:#ffc3c3;
+  }
+
+  .kpi-grid{
+    display:grid;
+    grid-template-columns:repeat(auto-fit,minmax(140px,1fr));
+    gap:10px;
+  }
+  .kpi{
+    padding:8px 10px;
+    border-radius:12px;
+    background:color-mix(in srgb,var(--panel2) 92%,#000 8%);
+    border:1px solid rgba(255,255,255,.06);
+  }
+  .kpi-label{
+    font-size:11px;
+    color:var(--muted);
+    margin-bottom:2px;
+  }
+  .kpi-value{
+    font-size:16px;
+    font-weight:600;
+  }
+  .kpi-sub{
+    font-size:11px;
+    color:var(--muted);
+    margin-top:2px;
+  }
+
+  .sec-title{
+    margin:10px 0 4px;
+    color:var(--muted);
+    font-weight:600;
+    font-size:13px;
+  }
+
+  .chart-box{
+    position:relative;
+    width:100%;
+    height:260px;
+  }
+  .chart-box canvas{
+    width:100% !important;
+    height:100% !important;
+  }
+
+  .table-wrap{
+    width:100%;
+    overflow-x:auto;
+  }
+  table{
+    width:100%;
+    border-collapse:collapse;
+    table-layout:fixed;
+    font-size:13px;
+  }
+  th,td{
+    padding:6px 8px;
+    border-top:1px solid rgba(255,255,255,.06);
+    vertical-align:middle;
+  }
+  th{
+    color:var(--muted);
+    text-align:left;
+    font-weight:600;
+    font-size:12px;
+  }
+  td.mono{font-size:12px;}
+
+  .pill-small{
+    display:inline-block;
+    padding:2px 7px;
+    border-radius:999px;
+    font-size:11px;
+    background:rgba(255,255,255,.04);
+    color:var(--muted);
+  }
+
+  @media (max-width: 1100px){
+    .grid-main{
+      grid-template-columns:1fr;
+    }
+  }
+  @media (max-width: 900px){
+    .wrap{padding:10px;}
+    header{flex-direction:column;align-items:flex-start;gap:6px;}
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="header-left">
+    <h1>Anchor statisztika</h1>
+    <div class="muted">ESP állapot, BLE / Ethernet forgalom grafikonokkal</div>
+  </div>
+  <div class="toolbar">
+    <button class="btn ghost" id="btnRefreshOnce">Azonnali frissítés</button>
+    <a href="/super" class="btn ghost" id="btnBack">Vissza a konfigurációhoz</a>
+    <button class="btn" id="btnLogout">Kijelentkezés</button>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <!-- Összefoglaló + per-interfész KPI-k -->
+  <section class="card full">
+    <div class="hd">
+      <div class="hd-title">
+        <span>Rendszer összefoglaló</span>
+        <small>Uptime, CPU, memória, BLE / Ethernet link állapot</small>
+      </div>
+      <div class="stat-row">
+        <span id="pillBle"  class="stat-pill warn">BLE: ismeretlen</span>
+        <span id="pillEth"  class="stat-pill warn">ETH: ismeretlen</span>
+        <span id="pillMain" class="stat-pill warn">Fő szerver: ismeretlen</span>
+      </div>
+    </div>
+    <div class="bd">
+      <div class="kpi-grid">
+        <div class="kpi">
+          <div class="kpi-label">Uptime</div>
+          <div class="kpi-value" id="kpiUptime">–</div>
+          <div class="kpi-sub mono" id="kpiUptimeRaw"></div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-label">CPU terhelés</div>
+          <div class="kpi-value" id="kpiCpuLoad">–</div>
+          <div class="kpi-sub">Átlagos load (1s)</div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-label">Szabad heap</div>
+          <div class="kpi-value" id="kpiHeap">–</div>
+          <div class="kpi-sub mono" id="kpiHeapRaw"></div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-label">BLE csomag / s</div>
+          <div class="kpi-value" id="kpiBleRate">–</div>
+          <div class="kpi-sub mono" id="kpiBleTotal"></div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-label">ETH csomag / s</div>
+          <div class="kpi-value" id="kpiEthRate">–</div>
+          <div class="kpi-sub mono" id="kpiEthTotal"></div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-label">Hibaarány (összes)</div>
+          <div class="kpi-value" id="kpiErrRate">–</div>
+          <div class="kpi-sub mono" id="kpiErrTotal"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Felső rács: forgalmi grafikonok + összesített hibák -->
+  <div class="grid-main">
+    <section class="card">
+      <div class="hd">
+        <div class="hd-title">
+          <span>BLE vs Ethernet forgalom</span>
+          <small>Csomag/sec idősor</small>
+        </div>
+        <div class="muted mono" id="lblLastUpdate">Utolsó frissítés: –</div>
+      </div>
+      <div class="bd">
+        <div class="chart-box">
+          <canvas id="chartTraffic"></canvas>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="hd">
+        <div class="hd-title">
+          <span>Hibaarány</span>
+          <small>BLE / Ethernet hibák (%)</small>
+        </div>
+      </div>
+      <div class="bd">
+        <div class="chart-box">
+          <canvas id="chartErrors"></canvas>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- Alsó rács: utolsó BLE / ETH csomagok -->
+  <div class="grid-bottom">
+    <section class="card">
+      <div class="hd">
+        <div class="hd-title">
+          <span>BLE – utolsó csomagok</span>
+          <small>Pontosan beérkező adatok (BLE link)</small>
+        </div>
+      </div>
+      <div class="bd">
+        <div class="sec-title">Utolsó N BLE csomag</div>
+        <div class="table-wrap">
+          <table id="tblBle">
+            <thead>
+              <tr>
+                <th>Idő</th>
+                <th>RSSI / minőség</th>
+                <th>Hossz (byte)</th>
+                <th>Meta</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="hd">
+        <div class="hd-title">
+          <span>Ethernet – utolsó csomagok</span>
+          <small>Pontosan beérkező adatok (LAN / IP)</small>
+        </div>
+      </div>
+      <div class="bd">
+        <div class="sec-title">Utolsó N ETH csomag</div>
+        <div class="table-wrap">
+          <table id="tblEth">
+            <thead>
+              <tr>
+                <th>Idő</th>
+                <th>Forrás</th>
+                <th>Hossz (byte)</th>
+                <th>Meta</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </div>
+
+</div>
+
+<script>
+/*
+  FELTÉTELEZETT /api/stats JSON STRUKTÚRA – backend oldalon ehhez igazíts:
+
+  {
+    "ts": 1732968000,           // másodperc alapú timestamp
+    "uptime_sec": 12345,
+    "cpu": { "load": 0.17 },
+    "heap": { "free": 204800 },
+    "ble": {
+      "rx_rate": 120.5,         // csomag/s
+      "tx_rate": 30.0,
+      "rx_total": 123456,
+      "tx_total": 34567,
+      "err_rate": 0.2,          // %
+      "err_total": 12
+    },
+    "eth": {
+      "rx_rate": 80.0,
+      "tx_rate": 50.0,
+      "rx_total": 98765,
+      "tx_total": 12345,
+      "err_rate": 0.1,
+      "err_total": 5
+    },
+    "link": {
+      "ble_up": true,
+      "eth_up": true,
+      "main_up": true
+    },
+    "samples": [                // idősor a grafikonhoz
+      { "t": 1732968000000, "ble_rx": 120.5, "eth_rx": 80.0, "ble_err": 0.2, "eth_err": 0.1 }
+      // csak az utolsó néhány perc szükséges
+    ],
+    "last_ble": [
+      { "ts": 1732968000000, "rssi": -70, "len": 32, "meta": "tag=1234" }
+    ],
+    "last_eth": [
+      { "ts": 1732968000500, "src": "10.0.0.10:6000", "len": 64, "meta": "zone=1" }
+    ]
+  }
+
+  A frontend minden mezőt opcionálisan kezel, ha nincs, nem esik szét az oldal.
+*/
+
+const $ = id => document.getElementById(id);
+
+// ===== pill style helper =====
+function setPill(el, level, text){
+  if(!el) return;
+  let cls = 'stat-pill ';
+  if(level === 'ok') cls += 'ok';
+  else if(level === 'warn') cls += 'warn';
+  else cls += 'err';
+  el.className = cls;
+  el.textContent = text;
+}
+
+// ===== KPI formázók =====
+function fmtSeconds(sec){
+  if(!Number.isFinite(sec)) return '–';
+  const d = Math.floor(sec / 86400);
+  sec -= d * 86400;
+  const h = Math.floor(sec / 3600);
+  sec -= h * 3600;
+  const m = Math.floor(sec / 60);
+  sec -= m * 60;
+  const parts = [];
+  if(d) parts.push(d + ' nap');
+  if(h) parts.push(h + ' óra');
+  if(m) parts.push(m + ' perc');
+  if(sec && parts.length < 2) parts.push(sec + ' s');
+  return parts.join(' ');
+}
+
+function fmtRate(v, unit){
+  if(!Number.isFinite(v)) return '–';
+  if(v >= 1000) return (v/1000).toFixed(1) + ' k' + unit;
+  return v.toFixed(1) + ' ' + unit;
+}
+
+function fmtBytes(v){
+  if(!Number.isFinite(v)) return '–';
+  const units = ['B','KB','MB','GB'];
+  let i = 0;
+  while(v >= 1024 && i < units.length-1){
+    v /= 1024;
+    i++;
+  }
+  return v.toFixed(1) + ' ' + units[i];
+}
+
+function fmtPercent(v){
+  if(!Number.isFinite(v)) return '–';
+  return v.toFixed(2) + ' %';
+}
+
+function fmtTime(tsMs){
+  if(!Number.isFinite(tsMs)) return '–';
+  const d = new Date(tsMs);
+  return d.toLocaleTimeString('hu-HU',{hour12:false});
+}
+
+// ===== Chart.js init =====
+let trafficChart = null;
+let errorChart   = null;
+
+function initCharts(){
+  const trafficCtx = document.getElementById('chartTraffic');
+  const errorCtx   = document.getElementById('chartErrors');
+
+  trafficChart = new Chart(trafficCtx, {
+    type: 'line',
+    data: {
+      labels: [],
+      datasets: [
+        {
+          label: 'BLE rx [pkt/s]',
+          data: [],
+          borderWidth: 2,
+          tension: 0.25
+        },
+        {
+          label: 'ETH rx [pkt/s]',
+          data: [],
+          borderWidth: 2,
+          tension: 0.25
+        }
+      ]
+    },
+    options: {
+      responsive:true,
+      maintainAspectRatio:false,
+      animation:false,
+      interaction:{mode:'index',intersect:false},
+      plugins:{
+        legend:{labels:{font:{size:11}}},
+      },
+      scales:{
+        x:{ticks:{maxTicksLimit:8,font:{size:10}}},
+        y:{beginAtZero:true}
+      }
+    }
+  });
+
+  errorChart = new Chart(errorCtx, {
+    type: 'line',
+    data: {
+      labels: [],
+      datasets: [
+        {
+          label: 'BLE hiba [%]',
+          data: [],
+          borderWidth: 2,
+          tension: 0.25
+        },
+        {
+          label: 'ETH hiba [%]',
+          data: [],
+          borderWidth: 2,
+          tension: 0.25
+        }
+      ]
+    },
+    options: {
+      responsive:true,
+      maintainAspectRatio:false,
+      animation:false,
+      interaction:{mode:'index',intersect:false},
+      plugins:{
+        legend:{labels:{font:{size:11}}}
+      },
+      scales:{
+        x:{ticks:{maxTicksLimit:8,font:{size:10}}},
+        y:{beginAtZero:true}
+      }
+    }
+  });
+}
+
+const MAX_POINTS = 120; // kb. 4 perc 2s-es mintavételezésnél
+
+function updateChartsFromSamples(samples){
+  if(!trafficChart || !errorChart || !Array.isArray(samples)) return;
+
+  const tData  = trafficChart.data;
+  const eData  = errorChart.data;
+
+  tData.labels.length = 0;
+  tData.datasets[0].data.length = 0;
+  tData.datasets[1].data.length = 0;
+
+  eData.labels.length = 0;
+  eData.datasets[0].data.length = 0;
+  eData.datasets[1].data.length = 0;
+
+  const start = Math.max(0, samples.length - MAX_POINTS);
+  for(let i=start;i<samples.length;i++){
+    const s = samples[i] || {};
+    const tLabel = fmtTime(s.t ?? 0);
+    tData.labels.push(tLabel);
+    tData.datasets[0].data.push(Number.isFinite(s.ble_rx) ? s.ble_rx : null);
+    tData.datasets[1].data.push(Number.isFinite(s.eth_rx) ? s.eth_rx : null);
+
+    eData.labels.push(tLabel);
+    eData.datasets[0].data.push(Number.isFinite(s.ble_err) ? s.ble_err : null);
+    eData.datasets[1].data.push(Number.isFinite(s.eth_err) ? s.eth_err : null);
+  }
+
+  trafficChart.update('none');
+  errorChart.update('none');
+}
+
+// ===== KPI és táblák frissítése =====
+function updateKpis(stat){
+  const uptimeSec = stat.uptime_sec;
+  const cpuLoad   = stat.cpu?.load;
+  const heapFree  = stat.heap?.free;
+
+  $('#kpiUptime').textContent    = fmtSeconds(uptimeSec);
+  $('#kpiUptimeRaw').textContent = Number.isFinite(uptimeSec) ? uptimeSec + ' s' : '';
+
+  $('#kpiCpuLoad').textContent = Number.isFinite(cpuLoad)
+    ? (cpuLoad*100).toFixed(1) + ' %'
+    : '–';
+
+  $('#kpiHeap').textContent    = fmtBytes(heapFree || NaN);
+  $('#kpiHeapRaw').textContent = Number.isFinite(heapFree) ? heapFree + ' B' : '';
+
+  const ble = stat.ble || {};
+  const eth = stat.eth || {};
+  const bleTotal = (ble.rx_total||0) + (ble.tx_total||0);
+  const ethTotal = (eth.rx_total||0) + (eth.tx_total||0);
+  const errTotal = (ble.err_total||0) + (eth.err_total||0);
+  const errRate  = Number.isFinite(ble.err_rate) || Number.isFinite(eth.err_rate)
+    ? ((ble.err_rate||0)+(eth.err_rate||0))/2
+    : NaN;
+
+  $('#kpiBleRate').textContent  = fmtRate(ble.rx_rate || NaN, 'pkt/s');
+  $('#kpiBleTotal').textContent = bleTotal ? (bleTotal + ' csomag összesen') : '';
+
+  $('#kpiEthRate').textContent  = fmtRate(eth.rx_rate || NaN, 'pkt/s');
+  $('#kpiEthTotal').textContent = ethTotal ? (ethTotal + ' csomag összesen') : '';
+
+  $('#kpiErrRate').textContent  = fmtPercent(errRate);
+  $('#kpiErrTotal').textContent = errTotal ? (errTotal + ' hiba összesen') : '';
+}
+
+function updateLinkPills(stat){
+  const link = stat.link || {};
+  setPill($('#pillBle'), link.ble_up ? 'ok' : 'err',
+          link.ble_up ? 'BLE: élő kapcsolat' : 'BLE: nincs kapcsolat');
+
+  setPill($('#pillEth'), link.eth_up ? 'ok' : 'err',
+          link.eth_up ? 'ETH: élő kapcsolat' : 'ETH: nincs IP / link');
+
+  setPill($('#pillMain'), link.main_up ? 'ok' : 'warn',
+          link.main_up ? 'Fő szerver: elérhető' : 'Fő szerver: nem elérhető');
+}
+
+function updateLastTables(stat){
+  const tbBle = document.querySelector('#tblBle tbody');
+  const tbEth = document.querySelector('#tblEth tbody');
+  if(tbBle) tbBle.innerHTML = '';
+  if(tbEth) tbEth.innerHTML = '';
+
+  const lastBle = Array.isArray(stat.last_ble) ? stat.last_ble : [];
+  const lastEth = Array.isArray(stat.last_eth) ? stat.last_eth : [];
+
+  const makeRowBle = r => {
+    const t   = fmtTime(r.ts ?? 0);
+    const rssi= (r.rssi !== undefined) ? (r.rssi + ' dBm') : '–';
+    const len = (r.len !== undefined) ? r.len : '–';
+    const meta= r.meta || '';
+    return `<tr>
+      <td class="mono">${t}</td>
+      <td class="mono">${rssi}</td>
+      <td class="mono">${len}</td>
+      <td>${meta ? `<span class="pill-small mono">${meta}</span>` : ''}</td>
+    </tr>`;
+  };
+
+  const makeRowEth = r => {
+    const t   = fmtTime(r.ts ?? 0);
+    const src = r.src || '–';
+    const len = (r.len !== undefined) ? r.len : '–';
+    const meta= r.meta || '';
+    return `<tr>
+      <td class="mono">${t}</td>
+      <td class="mono">${src}</td>
+      <td class="mono">${len}</td>
+      <td>${meta ? `<span class="pill-small mono">${meta}</span>` : ''}</td>
+    </tr>`;
+  };
+
+  if(tbBle) tbBle.innerHTML = lastBle.map(makeRowBle).join('');
+  if(tbEth) tbEth.innerHTML = lastEth.map(makeRowEth).join('');
+}
+
+// ===== /api/stats lekérés =====
+let pollTimer = null;
+const POLL_MS = 2000;
+
+async function fetchStatsOnce(){
+  try{
+    const r = await fetch('/api/stats', { cache:'no-store' });
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    const stat = await r.json();
+
+    updateKpis(stat);
+    updateLinkPills(stat);
+    updateChartsFromSamples(stat.samples || []);
+    updateLastTables(stat);
+
+    const ts = stat.ts ? new Date(stat.ts*1000) : new Date();
+    $('#lblLastUpdate').textContent = 'Utolsó frissítés: ' +
+      ts.toLocaleTimeString('hu-HU',{hour12:false});
+  }catch(e){
+    console.error('[stats] hiba', e);
+    $('#lblLastUpdate').textContent = 'Utolsó frissítés: hiba – ' + e.message;
+  }
+}
+
+function startPolling(){
+  if(pollTimer) clearInterval(pollTimer);
+  pollTimer = setInterval(fetchStatsOnce, POLL_MS);
+}
+
+// ===== logout gomb =====
+function setupLogout(){
+  const btn = $('#btnLogout');
+  if(!btn) return;
+  btn.addEventListener('click', () => {
+    document.cookie = "SID=; Path=/; Max-Age=0;";
+    window.location.href = "/login";
+  });
+}
+
+// ===== init =====
+window.addEventListener('DOMContentLoaded', () => {
+  initCharts();
+  setupLogout();
+
+  $('#btnRefreshOnce')?.addEventListener('click', fetchStatsOnce);
+
+  fetchStatsOnce();   // induláskor egy azonnali lekérés
+  startPolling();     // majd periodikus frissítés
+});
+</script>
+</body>
+</html>

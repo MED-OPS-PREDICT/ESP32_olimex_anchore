@@ -304,6 +304,7 @@
 <header>
   <h1>Super User</h1>
   <div class="muted">ESP lekér • DWM lekér • Beállít mindkettő</div>
+  <button class="btn ghost" id="btnToStats">Statisztika</button>
   <button class="btn ghost" id="btnLogout">Kijelentkezés</button>
 </header>
 
@@ -991,6 +992,11 @@ $('btnRebootEsp').addEventListener('click', async () => {
   } catch (e) {
     logln('[ESP] reboot hiba: ' + e.message);
   }
+});
+
+$('btnToStats').addEventListener('click', () => {
+  // ide azt az URL-t írd, ahol a statisztikai oldalad elérhető
+  window.location.href = "/stats";
 });
 
 </script>
