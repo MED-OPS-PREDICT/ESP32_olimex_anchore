@@ -92,6 +92,97 @@ static struct {
     bool     have[H__COUNT];
 } s_cfg;
 
+// --- ÚJ segédfüggvény: s_cfg -> JSON objektum ---
+static void build_cfg_json(cJSON *j)
+{
+    // Állapot
+    if (s_cfg.have[H_STATUS])
+        cJSON_AddNumberToObject(j, "STATUS", s_cfg.status);
+    if (s_cfg.have[H_UPTIME_MS])
+        cJSON_AddNumberToObject(j, "UPTIME_MS", s_cfg.uptime_ms);
+    if (s_cfg.have[H_SYNC_MS])
+        cJSON_AddNumberToObject(j, "SYNC_MS", s_cfg.sync_ms);
+
+    // Alap kulcsok
+    if (s_cfg.have[H_NETWORK_ID])
+        cJSON_AddNumberToObject(j, "NETWORK_ID", s_cfg.network_id);
+
+    if (s_cfg.have[H_ZONE_ID]) {
+        cJSON_AddNumberToObject(j, "ZONE_ID", s_cfg.zone_id);
+
+        char hex[8];
+        snprintf(hex, sizeof hex, "0x%04X", s_cfg.zone_id);
+        cJSON_AddStringToObject(j, "ZONE_ID_HEX", hex);
+    }
+
+    if (s_cfg.have[H_ANCHOR_ID]) {
+        char hex[11];
+        snprintf(hex, sizeof hex, "0x%08" PRIX32, (uint32_t)s_cfg.anchor_id);
+        cJSON_AddStringToObject(j, "ANCHOR_ID", hex);
+    }
+
+    if (s_cfg.have[H_HB_MS])
+        cJSON_AddNumberToObject(j, "HB_MS", s_cfg.hb_ms);
+    if (s_cfg.have[H_LOG_LEVEL])
+        cJSON_AddNumberToObject(j, "LOG_LEVEL", s_cfg.log_level);
+    if (s_cfg.have[H_TX_ANT_DLY])
+        cJSON_AddNumberToObject(j, "TX_ANT_DLY", s_cfg.tx_ant_dly);
+    if (s_cfg.have[H_RX_ANT_DLY])
+        cJSON_AddNumberToObject(j, "RX_ANT_DLY", s_cfg.rx_ant_dly);
+    if (s_cfg.have[H_BIAS_TICKS])
+        cJSON_AddNumberToObject(j, "BIAS_TICKS", s_cfg.bias_ticks);
+    if (s_cfg.have[H_PHY_CH])
+        cJSON_AddNumberToObject(j, "PHY_CH", s_cfg.phy_ch);
+    if (s_cfg.have[H_PHY_SFDTO])
+        cJSON_AddNumberToObject(j, "PHY_SFDTO", s_cfg.phy_sfdto);
+
+    // SYN*
+    if (s_cfg.have[H_SYN_PPM_MAX])
+        cJSON_AddNumberToObject(j, "PPM_MAX", s_cfg.syn_ppm_max);
+    if (s_cfg.have[H_SYN_JUMP_PPM])
+        cJSON_AddNumberToObject(j, "JUMP_PPM", s_cfg.syn_jump_ppm);
+    if (s_cfg.have[H_SYN_AB_GAP_MS])
+        cJSON_AddNumberToObject(j, "AB_GAP_MS", s_cfg.syn_ab_gap_ms);
+    if (s_cfg.have[H_SYN_MS_EWMA_DEN])
+        cJSON_AddNumberToObject(j, "MS_EWMA_DEN", s_cfg.syn_ms_ewma_den);
+    if (s_cfg.have[H_SYN_TK_EWMA_DEN])
+        cJSON_AddNumberToObject(j, "TK_EWMA_DEN", s_cfg.syn_tk_ewma_den);
+    if (s_cfg.have[H_SYN_TK_MIN_MS])
+        cJSON_AddNumberToObject(j, "TK_MIN_MS", s_cfg.syn_tk_min_ms);
+    if (s_cfg.have[H_SYN_TK_MAX_MS])
+        cJSON_AddNumberToObject(j, "TK_MAX_MS", s_cfg.syn_tk_max_ms);
+    if (s_cfg.have[H_SYN_DTTX_MIN_MS])
+        cJSON_AddNumberToObject(j, "DTTX_MIN_MS", s_cfg.syn_dttx_min_ms);
+    if (s_cfg.have[H_SYN_DTTX_MAX_MS])
+        cJSON_AddNumberToObject(j, "DTTX_MAX_MS", s_cfg.syn_dttx_max_ms);
+    if (s_cfg.have[H_SYN_LOCK_NEED])
+        cJSON_AddNumberToObject(j, "LOCK_NEED", s_cfg.syn_lock_need);
+
+    // PHY extra
+    if (s_cfg.have[H_PHY_PLEN])
+        cJSON_AddNumberToObject(j, "PHY_PLEN", s_cfg.phy_plen);
+    if (s_cfg.have[H_PHY_PAC])
+        cJSON_AddNumberToObject(j, "PHY_PAC", s_cfg.phy_pac);
+    if (s_cfg.have[H_PHY_TX_CODE])
+        cJSON_AddNumberToObject(j, "PHY_TX_CODE", s_cfg.phy_tx_code);
+    if (s_cfg.have[H_PHY_RX_CODE])
+        cJSON_AddNumberToObject(j, "PHY_RX_CODE", s_cfg.phy_rx_code);
+    if (s_cfg.have[H_PHY_SFD])
+        cJSON_AddNumberToObject(j, "PHY_SFD", s_cfg.phy_sfd);
+    if (s_cfg.have[H_PHY_BR])
+        cJSON_AddNumberToObject(j, "PHY_BR", s_cfg.phy_br);
+    if (s_cfg.have[H_PHY_PHRMODE])
+        cJSON_AddNumberToObject(j, "PHY_PHRMODE", s_cfg.phy_phrmode);
+    if (s_cfg.have[H_PHY_PHRRATE])
+        cJSON_AddNumberToObject(j, "PHY_PHRRATE", s_cfg.phy_phrrate);
+    if (s_cfg.have[H_PHY_STS_MODE])
+        cJSON_AddNumberToObject(j, "PHY_STS_MODE", s_cfg.phy_sts_mode);
+    if (s_cfg.have[H_PHY_STS_LEN])
+        cJSON_AddNumberToObject(j, "PHY_STS_LEN", s_cfg.phy_sts_len);
+    if (s_cfg.have[H_PHY_PDOA])
+        cJSON_AddNumberToObject(j, "PHY_PDOA", s_cfg.phy_pdoa);
+}
+
 /* csak *egyszer* */
 static void reset_cfg(void)
 {
