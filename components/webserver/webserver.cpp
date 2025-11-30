@@ -25,6 +25,7 @@
 #include "globals.h"
 #include "error_code_decoding.h"
 #include "hb_status.h"
+#include "web_stats.h"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -883,6 +884,10 @@ esp_err_t webserver_start(){
     // BLE bridge
     ble_http_bridge_init();
     http_register_routes(s_http);   // /api/dwm_get
+
+    // ÚJ: statisztika modul
+    web_stats_init();
+    web_stats_register_handlers(s_http);
 
     // Pages
     httpd_uri_t u{};
