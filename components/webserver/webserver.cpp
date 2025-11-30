@@ -142,9 +142,8 @@ static esp_err_t options_ok(httpd_req_t* req){
 static esp_err_t send_file(httpd_req_t* req, const char* path, const char* ctype);
 
 static esp_err_t stats_get(httpd_req_t* r){
-    // ugyanaz a jogosultság, mint a Super User oldalnál
     if(!require_role(r, ROLE_BLE)) return ESP_FAIL;
-    return send_file(r, "/spiffs/stats.html", "text/html");
+    return send_file(r, "/spiffs/web_stats.html", "text/html");
 }
 
 esp_err_t handle_setkey(httpd_req_t *req)
