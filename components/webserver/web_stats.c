@@ -8,6 +8,7 @@
 #include "esp_timer.h"
 #include "esp_heap_caps.h"
 #include "esp_freertos_hooks.h"   // idle hook
+#include "esp_chip_info.h"
 #include <math.h>
 #include "cJSON.h"
 
@@ -113,7 +114,7 @@ static esp_err_t web_stats_api(httpd_req_t *req)
     uint64_t uptime_sec = now_us / 1000000ULL;
 
     // szabad heap
-    size_t heap_free = esp_get_free_heap_size();
+    size_t heap_free     = esp_get_free_heap_size();
     size_t heap_min_free = esp_get_minimum_free_heap_size();
 
     // CPU load 0..1 (összes mag átlaga)
@@ -125,8 +126,7 @@ static esp_err_t web_stats_api(httpd_req_t *req)
         return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "OOM");
     }
 
-    // Ha nincs valódi RTC, a ts mezőt hagyhatjuk 0-nak,
-    // így a frontend a current time-ot használja.
+    // Ha nincs RTC, ts=0 → frontend az aktuális idővel jelzi a frissítést.
     cJSON_AddNumberToObject(root, "ts", 0);
     cJSON_AddNumberToObject(root, "uptime_sec", (double)uptime_sec);
 
@@ -135,14 +135,12 @@ static esp_err_t web_stats_api(httpd_req_t *req)
     if (cpu) {
         cJSON_AddNumberToObject(cpu, "load", (double)load);  // 0..1 – ezt várja a web_stats.html
 
-        // opcionális, ha később per-core kellene
-        cJSON *cores_arr = cJSON_CreateArray();
-        if (cores_arr) {
-            for (int i = 0; i < CORE_COUNT; ++i) {
-                cJSON_AddItemToArray(cores_arr, cJSON_CreateNumber((double)load));
-            }
-            cJSON_AddItemToObject(cpu, "cores_load", cores_arr);
-        }
+        // opcionális extra mezők (nem használtak most a UI-ban)
+        esp_chip_info_t chip;
+        esp_chip_info(&chip);
+        cJSON_AddNumberToObject(cpu, "cores", chip.cores);
+        cJSON_AddNumberToObject(cpu, "mhz", (double)CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ);
+
         cJSON_AddItemToObject(root, "cpu", cpu);
     }
 
@@ -152,7 +150,7 @@ static esp_err_t web_stats_api(httpd_req_t *req)
         cJSON_AddNumberToObject(heap, "free", (double)heap_free);
         cJSON_AddNumberToObject(heap, "min_free", (double)heap_min_free);
 
-        // belső heap, psram – részletesebb stat
+        // belső heap, psram
         size_t int_free  = heap_caps_get_free_size(MALLOC_CAP_8BIT | MALLOC_CAP_INTERNAL);
         size_t int_total = heap_caps_get_total_size(MALLOC_CAP_8BIT | MALLOC_CAP_INTERNAL);
         cJSON_AddNumberToObject(heap, "int_free",  (double)int_free);
@@ -176,21 +174,33 @@ static esp_err_t web_stats_api(httpd_req_t *req)
         cJSON_AddItemToObject(root, "heap", heap);
     }
 
-    // BLE stat placeholder – itt tudod összekötni a saját számlálóiddal
+    /* ====== IDE KÖTHETED A VALÓDI BLE / ETH SZÁMLÁLÓKAT ======
+     * Például ha a BLE modulban vannak globális statok:
+     *
+     *   extern float g_ble_rx_rate;
+     *   extern uint64_t g_ble_rx_total;
+     *   extern float g_ble_err_rate;
+     *
+     * akkor alább ezeket használd.
+     */
+
+    // BLE stat
     cJSON *ble = cJSON_CreateObject();
     if (ble) {
-        cJSON_AddNumberToObject(ble, "rx_rate",  0.0);
+        // TODO: cseréld ki a saját statjaidra
+        cJSON_AddNumberToObject(ble, "rx_rate",  0.0);  // csomag/s
         cJSON_AddNumberToObject(ble, "tx_rate",  0.0);
         cJSON_AddNumberToObject(ble, "rx_total", 0);
         cJSON_AddNumberToObject(ble, "tx_total", 0);
-        cJSON_AddNumberToObject(ble, "err_rate", 0.0);
+        cJSON_AddNumberToObject(ble, "err_rate", 0.0);  // %
         cJSON_AddNumberToObject(ble, "err_total", 0);
         cJSON_AddItemToObject(root, "ble", ble);
     }
 
-    // ETH stat placeholder – itt tudod összekötni a saját számlálóiddal
+    // ETH stat
     cJSON *eth = cJSON_CreateObject();
     if (eth) {
+        // TODO: cseréld ki a saját statjaidra
         cJSON_AddNumberToObject(eth, "rx_rate",  0.0);
         cJSON_AddNumberToObject(eth, "tx_rate",  0.0);
         cJSON_AddNumberToObject(eth, "rx_total", 0);
@@ -212,7 +222,7 @@ static esp_err_t web_stats_api(httpd_req_t *req)
     // Üres idősor a grafikonhoz – ha van mintavételed, ide appendelj
     cJSON *samples = cJSON_CreateArray();
     if (samples) {
-        // Példának hagyjuk üresen; a frontend ezt is kezeli
+        // Példának üresen hagyjuk; a frontend ezt is kezeli
         cJSON_AddItemToObject(root, "samples", samples);
     }
 
