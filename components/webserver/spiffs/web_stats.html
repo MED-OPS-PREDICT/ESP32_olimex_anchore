@@ -233,6 +233,22 @@
     color:var(--muted);
   }
 
+  /* Donut layout */
+  .chart-grid-2{
+    display:grid;
+    grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
+    gap:12px;
+  }
+  .chart-gauge-box{
+    position:relative;
+    width:100%;
+    height:200px;
+  }
+  .chart-gauge-box canvas{
+    width:100% !important;
+    height:100% !important;
+  }
+
   @media (max-width: 1100px){
     .grid-main{
       grid-template-columns:1fr;
@@ -308,7 +324,7 @@
     </div>
   </section>
 
-  <!-- Felső rács: forgalmi grafikonok + összesített hibák -->
+  <!-- Felső rács: forgalmi grafikonok + hibák + CPU/Mem donutok -->
   <div class="grid-main">
     <section class="card">
       <div class="hd">
@@ -338,6 +354,33 @@
         </div>
       </div>
     </section>
+
+    <!-- CPU + memória donutok -->
+    <section class="card">
+      <div class="hd">
+        <div class="hd-title">
+          <span>CPU és memória kihasználtság</span>
+          <small>Donut diagramok (pillanatnyi állapot)</small>
+        </div>
+      </div>
+      <div class="bd">
+        <div class="chart-grid-2">
+          <div>
+            <div class="sec-title">CPU terhelés</div>
+            <div class="chart-gauge-box">
+              <canvas id="chartCpuGauge"></canvas>
+            </div>
+          </div>
+          <div>
+            <div class="sec-title">Belső heap kihasználtság</div>
+            <div class="chart-gauge-box">
+              <canvas id="chartHeapGauge"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+    <!-- /CPU + memória donutok -->
   </div>
 
   <!-- Alsó rács: utolsó BLE / ETH csomagok -->
@@ -403,7 +446,14 @@
     "ts": 1732968000,           // másodperc alapú timestamp
     "uptime_sec": 12345,
     "cpu": { "load": 0.17 },
-    "heap": { "free": 204800 },
+    "heap": {
+      "free": 204800,
+      "min_free": 12345,
+      "int_total": 524288,
+      "int_used": 262144,
+      "psram_total": 0,
+      "psram_used": 0
+    },
     "ble": {
       "rx_rate": 120.5,         // csomag/s
       "tx_rate": 30.0,
@@ -501,78 +551,152 @@ function fmtTime(tsMs){
 // ===== Chart.js init =====
 let trafficChart = null;
 let errorChart   = null;
+let cpuGauge     = null;
+let heapGauge    = null;
 
 function initCharts(){
   const trafficCtx = document.getElementById('chartTraffic');
   const errorCtx   = document.getElementById('chartErrors');
 
-  trafficChart = new Chart(trafficCtx, {
-    type: 'line',
-    data: {
-      labels: [],
-      datasets: [
-        {
-          label: 'BLE rx [pkt/s]',
-          data: [],
-          borderWidth: 2,
-          tension: 0.25
-        },
-        {
-          label: 'ETH rx [pkt/s]',
-          data: [],
-          borderWidth: 2,
-          tension: 0.25
-        }
-      ]
-    },
-    options: {
-      responsive:true,
-      maintainAspectRatio:false,
-      animation:false,
-      interaction:{mode:'index',intersect:false},
-      plugins:{
-        legend:{labels:{font:{size:11}}},
+  if (trafficCtx) {
+    trafficChart = new Chart(trafficCtx, {
+      type: 'line',
+      data: {
+        labels: [],
+        datasets: [
+          {
+            label: 'BLE rx [pkt/s]',
+            data: [],
+            borderWidth: 2,
+            tension: 0.25
+          },
+          {
+            label: 'ETH rx [pkt/s]',
+            data: [],
+            borderWidth: 2,
+            tension: 0.25
+          }
+        ]
       },
-      scales:{
-        x:{ticks:{maxTicksLimit:8,font:{size:10}}},
-        y:{beginAtZero:true}
+      options: {
+        responsive:true,
+        maintainAspectRatio:false,
+        animation:false,
+        interaction:{mode:'index',intersect:false},
+        plugins:{
+          legend:{labels:{font:{size:11}}},
+        },
+        scales:{
+          x:{ticks:{maxTicksLimit:8,font:{size:10}}},
+          y:{beginAtZero:true}
+        }
       }
-    }
-  });
+    });
+  }
 
-  errorChart = new Chart(errorCtx, {
-    type: 'line',
-    data: {
-      labels: [],
-      datasets: [
-        {
-          label: 'BLE hiba [%]',
-          data: [],
-          borderWidth: 2,
-          tension: 0.25
-        },
-        {
-          label: 'ETH hiba [%]',
-          data: [],
-          borderWidth: 2,
-          tension: 0.25
-        }
-      ]
-    },
-    options: {
-      responsive:true,
-      maintainAspectRatio:false,
-      animation:false,
-      interaction:{mode:'index',intersect:false},
-      plugins:{
-        legend:{labels:{font:{size:11}}}
+  if (errorCtx) {
+    errorChart = new Chart(errorCtx, {
+      type: 'line',
+      data: {
+        labels: [],
+        datasets: [
+          {
+            label: 'BLE hiba [%]',
+            data: [],
+            borderWidth: 2,
+            tension: 0.25
+          },
+          {
+            label: 'ETH hiba [%]',
+            data: [],
+            borderWidth: 2,
+            tension: 0.25
+          }
+        ]
       },
-      scales:{
-        x:{ticks:{maxTicksLimit:8,font:{size:10}}},
-        y:{beginAtZero:true}
+      options: {
+        responsive:true,
+        maintainAspectRatio:false,
+        animation:false,
+        interaction:{mode:'index',intersect:false},
+        plugins:{
+          legend:{labels:{font:{size:11}}}
+        },
+        scales:{
+          x:{ticks:{maxTicksLimit:8,font:{size:10}}},
+          y:{beginAtZero:true}
+        }
       }
-    }
-  });
+    });
+  }
+
+  // CPU donut
+  const cpuCtx = document.getElementById('chartCpuGauge');
+  if (cpuCtx) {
+    cpuGauge = new Chart(cpuCtx, {
+      type: 'doughnut',
+      data: {
+        labels: ['Használt', 'Idle'],
+        datasets: [{
+          data: [0, 100],
+          borderWidth: 0
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        cutout: '70%',
+        plugins: {
+          legend: {
+            labels: { font: { size: 11 } }
+          },
+          tooltip: {
+            callbacks: {
+              label: ctx => {
+                const lbl = ctx.label || '';
+                const v = ctx.parsed;
+                return `${lbl}: ${v.toFixed(1)} %`;
+              }
+            }
+          }
+        }
+      }
+    });
+  }
+
+  // Heap donut (belső heap)
+  const heapCtx = document.getElementById('chartHeapGauge');
+  if (heapCtx) {
+    heapGauge = new Chart(heapCtx, {
+      type: 'doughnut',
+      data: {
+        labels: ['Használt', 'Szabad'],
+        datasets: [{
+          data: [0, 100],
+          borderWidth: 0
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        cutout: '70%',
+        plugins: {
+          legend: {
+            labels: { font: { size: 11 } }
+          },
+          tooltip: {
+            callbacks: {
+              label: ctx => {
+                const lbl = ctx.label || '';
+                const v = ctx.parsed;
+                return `${lbl}: ${v.toFixed(1)} %`;
+              }
+            }
+          }
+        }
+      }
+    });
+  }
 }
 
 const MAX_POINTS = 120; // kb. 4 perc 2s-es mintavételezésnél
@@ -694,6 +818,40 @@ function updateLastTables(stat){
   if(tbEth) tbEth.innerHTML = lastEth.map(makeRowEth).join('');
 }
 
+// CPU + memória donut frissítés
+function updateCpuMemGauges(stat){
+  const cpuLoad = stat.cpu?.load;
+  const heap    = stat.heap || {};
+
+  // CPU: 0..1 → %
+  if (cpuGauge && Number.isFinite(cpuLoad)) {
+    const usedPct = Math.max(0, Math.min(100, cpuLoad * 100));
+    cpuGauge.data.datasets[0].data = [usedPct, 100 - usedPct];
+    cpuGauge.update('none');
+  }
+
+  // Heap donut – int_total / int_used mezők preferáltak
+  let intTotal = heap.int_total;
+  let intUsed  = heap.int_used;
+
+  if (!Number.isFinite(intTotal) || intTotal <= 0) {
+    const free = heap.free;
+    if (Number.isFinite(free) && Number.isFinite(intUsed)) {
+      intTotal = free + intUsed;
+    }
+  }
+
+  if (!Number.isFinite(intUsed) && Number.isFinite(heap.free) && Number.isFinite(intTotal)) {
+    intUsed = Math.max(0, intTotal - heap.free);
+  }
+
+  if (heapGauge && Number.isFinite(intTotal) && intTotal > 0 && Number.isFinite(intUsed)) {
+    const usedPct = Math.max(0, Math.min(100, (intUsed / intTotal) * 100));
+    heapGauge.data.datasets[0].data = [usedPct, 100 - usedPct];
+    heapGauge.update('none');
+  }
+}
+
 // ===== /api/stats lekérés =====
 let pollTimer = null;
 const POLL_MS = 2000;
@@ -708,6 +866,7 @@ async function fetchStatsOnce(){
     updateLinkPills(stat);
     updateChartsFromSamples(stat.samples || []);
     updateLastTables(stat);
+    updateCpuMemGauges(stat);
 
     const ts = stat.ts ? new Date(stat.ts*1000) : new Date();
     $('#lblLastUpdate').textContent = 'Utolsó frissítés: ' +
@@ -740,7 +899,6 @@ window.addEventListener('DOMContentLoaded', () => {
 
   $('#btnRefreshOnce')?.addEventListener('click', fetchStatsOnce);
 
-  // <<< EZT ADD HOZZÁ
   const backBtn = document.getElementById('btnBack');
   if (backBtn) {
     backBtn.addEventListener('click', function (e) {
@@ -753,12 +911,10 @@ window.addEventListener('DOMContentLoaded', () => {
       }
     });
   }
-  // <<< IDÁIG
 
   fetchStatsOnce();   // induláskor egy azonnali lekérés
   startPolling();     // majd periodikus frissítés
 });
-
 </script>
 </body>
 </html>

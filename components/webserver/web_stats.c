@@ -2,106 +2,252 @@
 
 #include "web_stats.h"
 #include "esp_log.h"
-#include "esp_timer.h"
-#include "esp_system.h"
-#include "esp_chip_info.h"
-#include "esp_heap_caps.h"
 #include "esp_http_server.h"
+
+#include "esp_system.h"
+#include "esp_timer.h"
+#include "esp_heap_caps.h"
+#include "esp_freertos_hooks.h"   // idle hook
+#include <math.h>
 #include "cJSON.h"
 
 static const char *TAG = "WEB_STATS";
 
-static char *human_ms(uint64_t ms)
-{
-    uint64_t s = ms/1000ULL; uint64_t d = s/86400ULL; s%=86400ULL;
-    uint64_t h = s/3600ULL; s%=3600ULL;
-    uint64_t m = s/60ULL;   s%=60ULL;
+/* =========================
+ *  CPU TERHELÉS (per mag)
+ * =========================
+ * A FreeRTOS idle hook-ban mérjük az idle időt mikroszekundumban.
+ * /api/stats híváskor differenciáljuk → load = 1 - idle_dt / wall_dt.
+ */
 
-    static char buf[64];
-    if (d)
-        snprintf(buf,sizeof(buf),"%llud %02lluh %02llum %02llus",
-                 (unsigned long long)d,(unsigned long long)h,
-                 (unsigned long long)m,(unsigned long long)s);
-    else
-        snprintf(buf,sizeof(buf),"%02lluh %02llum %02llus",
-                 (unsigned long long)h,(unsigned long long)m,(unsigned long long)s);
-    return buf;
+#define CORE_COUNT 2
+
+static volatile uint64_t s_idle_us[CORE_COUNT]      = {0,0};
+static volatile uint64_t s_idle_last_us[CORE_COUNT] = {0,0};
+
+static uint64_t s_prev_time_us = 0;
+static uint64_t s_prev_idle_us[CORE_COUNT] = {0,0};
+
+static bool idle_hook_core0(void)
+{
+    uint64_t now = esp_timer_get_time();
+    uint64_t last = s_idle_last_us[0];
+    if (last != 0) {
+        s_idle_us[0] += (now - last);
+    }
+    s_idle_last_us[0] = now;
+    return true;    // maradjon regisztrálva
 }
 
-static esp_err_t web_stats_api(httpd_req_t *req)
+static bool idle_hook_core1(void)
 {
-    uint64_t now_us   = esp_timer_get_time();
-    uint64_t up_ms    = now_us/1000ULL;
-
-    cJSON *root = cJSON_CreateObject();
-    if (!root) return ESP_FAIL;
-
-    // uptime
-    cJSON_AddNumberToObject(root, "uptime_ms", up_ms);
-    cJSON_AddStringToObject(root, "uptime_human", human_ms(up_ms));
-
-    // chip
-    esp_chip_info_t chip;
-    esp_chip_info(&chip);
-    cJSON *chip_o = cJSON_CreateObject();
-    cJSON_AddStringToObject(chip_o, "model", "ESP32");
-    cJSON_AddNumberToObject(chip_o, "cores", chip.cores);
-    cJSON_AddNumberToObject(chip_o, "rev",   chip.revision);
-    cJSON_AddItemToObject(root, "chip", chip_o);
-
-    // CPU – ha nincs idle-hook, adj vissza csak frekit / magok számát
-    cJSON *cpu_o = cJSON_CreateObject();
-    cJSON_AddNumberToObject(cpu_o, "mhz",   (int)getCpuFrequencyMhz());
-    cJSON_AddNumberToObject(cpu_o, "cores", 2);
-    cJSON *cores = cJSON_AddArrayToObject(cpu_o, "cores_load");
-    cJSON_AddItemToArray(cores, cJSON_CreateNumber(0));   // core0 %
-    cJSON_AddItemToArray(cores, cJSON_CreateNumber(0));   // core1 %
-    cJSON_AddNumberToObject(cpu_o, "total", 0);
-    cJSON_AddItemToObject(root, "cpu", cpu_o);
-
-    // heap
-    uint32_t heap_free     = esp_get_free_heap_size();
-    uint32_t heap_min_free = esp_get_minimum_free_heap_size();
-    cJSON *heap_o = cJSON_CreateObject();
-    cJSON_AddNumberToObject(heap_o, "free",     heap_free);
-    cJSON_AddNumberToObject(heap_o, "min_free", heap_min_free);
-
-    size_t int_free  = heap_caps_get_free_size(MALLOC_CAP_8BIT | MALLOC_CAP_INTERNAL);
-    size_t int_total = heap_caps_get_total_size(MALLOC_CAP_8BIT | MALLOC_CAP_INTERNAL);
-    cJSON_AddNumberToObject(heap_o, "int_free",  int_free);
-    cJSON_AddNumberToObject(heap_o, "int_total", int_total);
-    cJSON_AddNumberToObject(heap_o, "int_used",  int_total - int_free);
-
-    cJSON_AddItemToObject(root, "heap", heap_o);
-
-    // Ethernet – itt használd a saját esp_eth / netif adataidat
-    cJSON *eth_o = cJSON_CreateObject();
-    cJSON_AddBoolToObject(eth_o, "connected", false);
-    cJSON_AddBoolToObject(eth_o, "link_up",   false);
-    cJSON_AddNumberToObject(eth_o, "speed_mbps", 0);
-    cJSON_AddBoolToObject(eth_o, "full_duplex", false);
-    cJSON_AddStringToObject(eth_o, "ip",  "");
-    cJSON_AddStringToObject(eth_o, "mac", "");
-    cJSON_AddItemToObject(root, "eth", eth_o);
-
-    // UWB / anchors / tags – itt tudod ugyanúgy feltölteni,
-    // ahogy a fill_sysmon() csinálja az Arduino-s projektben,
-    // a saját pktlog / ast / tstat struktúráidból.
-
-    char *json = cJSON_PrintUnformatted(root);
-    cJSON_Delete(root);
-    if (!json) return ESP_FAIL;
-
-    httpd_resp_set_type(req, "application/json");
-    esp_err_t res = httpd_resp_sendstr(req, json);
-    free(json);
-    return res;
+    uint64_t now = esp_timer_get_time();
+    uint64_t last = s_idle_last_us[1];
+    if (last != 0) {
+        s_idle_us[1] += (now - last);
+    }
+    s_idle_last_us[1] = now;
+    return true;
 }
+
+/* CPU load 0..1 között (összes mag átlaga) */
+static float cpu_load_sample(void)
+{
+    uint64_t now_us = esp_timer_get_time();
+
+    if (s_prev_time_us == 0) {
+        // első hívás – init, visszaadunk 0-t
+        s_prev_time_us = now_us;
+        for (int i = 0; i < CORE_COUNT; ++i) {
+            s_prev_idle_us[i] = s_idle_us[i];
+        }
+        return 0.0f;
+    }
+
+    uint64_t dt = now_us - s_prev_time_us;
+    if (dt < 1000) dt = 1000;  // védelem
+
+    double sum = 0.0;
+    int active = 0;
+
+    for (int i = 0; i < CORE_COUNT; ++i) {
+        uint64_t idle_dt = s_idle_us[i] - s_prev_idle_us[i];
+        double idle_frac = (double)idle_dt / (double)dt;
+        double load = 1.0 - idle_frac;
+        if (load < 0.0) load = 0.0;
+        if (load > 1.0) load = 1.0;
+        sum += load;
+        active++;
+        s_prev_idle_us[i] = s_idle_us[i];
+    }
+
+    s_prev_time_us = now_us;
+
+    if (active == 0) return 0.0f;
+    return (float)(sum / (double)active);   // 0..1
+}
+
+/* =========================
+ *  INIT
+ * ========================= */
 
 void web_stats_init(void)
 {
     ESP_LOGI(TAG, "web_stats_init()");
+
+    // idle hook regisztrálása mindkét magra
+    (void)esp_register_freertos_idle_hook_for_cpu(&idle_hook_core0, 0);
+    (void)esp_register_freertos_idle_hook_for_cpu(&idle_hook_core1, 1);
 }
+
+/* =========================
+ *  /api/stats handler
+ * ========================= */
+
+static esp_err_t web_stats_api(httpd_req_t *req)
+{
+    esp_err_t res = ESP_OK;
+
+    // uptime másodpercben (boot óta)
+    uint64_t now_us = esp_timer_get_time();
+    uint64_t uptime_sec = now_us / 1000000ULL;
+
+    // szabad heap
+    size_t heap_free = esp_get_free_heap_size();
+    size_t heap_min_free = esp_get_minimum_free_heap_size();
+
+    // CPU load 0..1 (összes mag átlaga)
+    float load = cpu_load_sample();
+
+    // JSON gyártás
+    cJSON *root = cJSON_CreateObject();
+    if (!root) {
+        return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "OOM");
+    }
+
+    // Ha nincs valódi RTC, a ts mezőt hagyhatjuk 0-nak,
+    // így a frontend a current time-ot használja.
+    cJSON_AddNumberToObject(root, "ts", 0);
+    cJSON_AddNumberToObject(root, "uptime_sec", (double)uptime_sec);
+
+    // CPU objektum
+    cJSON *cpu = cJSON_CreateObject();
+    if (cpu) {
+        cJSON_AddNumberToObject(cpu, "load", (double)load);  // 0..1 – ezt várja a web_stats.html
+
+        // opcionális, ha később per-core kellene
+        cJSON *cores_arr = cJSON_CreateArray();
+        if (cores_arr) {
+            for (int i = 0; i < CORE_COUNT; ++i) {
+                cJSON_AddItemToArray(cores_arr, cJSON_CreateNumber((double)load));
+            }
+            cJSON_AddItemToObject(cpu, "cores_load", cores_arr);
+        }
+        cJSON_AddItemToObject(root, "cpu", cpu);
+    }
+
+    // Heap objektum
+    cJSON *heap = cJSON_CreateObject();
+    if (heap) {
+        cJSON_AddNumberToObject(heap, "free", (double)heap_free);
+        cJSON_AddNumberToObject(heap, "min_free", (double)heap_min_free);
+
+        // belső heap, psram – részletesebb stat
+        size_t int_free  = heap_caps_get_free_size(MALLOC_CAP_8BIT | MALLOC_CAP_INTERNAL);
+        size_t int_total = heap_caps_get_total_size(MALLOC_CAP_8BIT | MALLOC_CAP_INTERNAL);
+        cJSON_AddNumberToObject(heap, "int_free",  (double)int_free);
+        cJSON_AddNumberToObject(heap, "int_total", (double)int_total);
+        cJSON_AddNumberToObject(heap, "int_used",
+                                (double)(int_total > int_free ? int_total - int_free : 0));
+
+#ifdef MALLOC_CAP_SPIRAM
+        size_t ps_free  = heap_caps_get_free_size(MALLOC_CAP_8BIT | MALLOC_CAP_SPIRAM);
+        size_t ps_total = heap_caps_get_total_size(MALLOC_CAP_8BIT | MALLOC_CAP_SPIRAM);
+        cJSON_AddNumberToObject(heap, "psram_free",  (double)ps_free);
+        cJSON_AddNumberToObject(heap, "psram_total", (double)ps_total);
+        cJSON_AddNumberToObject(heap, "psram_used",
+                                (double)(ps_total > ps_free ? ps_total - ps_free : 0));
+#else
+        cJSON_AddNumberToObject(heap, "psram_free",  0);
+        cJSON_AddNumberToObject(heap, "psram_total", 0);
+        cJSON_AddNumberToObject(heap, "psram_used",  0);
+#endif
+
+        cJSON_AddItemToObject(root, "heap", heap);
+    }
+
+    // BLE stat placeholder – itt tudod összekötni a saját számlálóiddal
+    cJSON *ble = cJSON_CreateObject();
+    if (ble) {
+        cJSON_AddNumberToObject(ble, "rx_rate",  0.0);
+        cJSON_AddNumberToObject(ble, "tx_rate",  0.0);
+        cJSON_AddNumberToObject(ble, "rx_total", 0);
+        cJSON_AddNumberToObject(ble, "tx_total", 0);
+        cJSON_AddNumberToObject(ble, "err_rate", 0.0);
+        cJSON_AddNumberToObject(ble, "err_total", 0);
+        cJSON_AddItemToObject(root, "ble", ble);
+    }
+
+    // ETH stat placeholder – itt tudod összekötni a saját számlálóiddal
+    cJSON *eth = cJSON_CreateObject();
+    if (eth) {
+        cJSON_AddNumberToObject(eth, "rx_rate",  0.0);
+        cJSON_AddNumberToObject(eth, "tx_rate",  0.0);
+        cJSON_AddNumberToObject(eth, "rx_total", 0);
+        cJSON_AddNumberToObject(eth, "tx_total", 0);
+        cJSON_AddNumberToObject(eth, "err_rate", 0.0);
+        cJSON_AddNumberToObject(eth, "err_total", 0);
+        cJSON_AddItemToObject(root, "eth", eth);
+    }
+
+    // Link állapot – most mindent "ok"-ra tesszük; ha van valós infód, ide kösd be
+    cJSON *link = cJSON_CreateObject();
+    if (link) {
+        cJSON_AddBoolToObject(link, "ble_up",  true);
+        cJSON_AddBoolToObject(link, "eth_up",  true);
+        cJSON_AddBoolToObject(link, "main_up", true);
+        cJSON_AddItemToObject(root, "link", link);
+    }
+
+    // Üres idősor a grafikonhoz – ha van mintavételed, ide appendelj
+    cJSON *samples = cJSON_CreateArray();
+    if (samples) {
+        // Példának hagyjuk üresen; a frontend ezt is kezeli
+        cJSON_AddItemToObject(root, "samples", samples);
+    }
+
+    // Üres last_ble / last_eth listák – a táblákhoz
+    cJSON *last_ble = cJSON_CreateArray();
+    if (last_ble) {
+        // ha vannak logolt BLE csomagok, ide pushold őket:
+        // { "ts": ms, "rssi": -70, "len": 32, "meta": "tag=1234" }
+        cJSON_AddItemToObject(root, "last_ble", last_ble);
+    }
+
+    cJSON *last_eth = cJSON_CreateArray();
+    if (last_eth) {
+        // ha vannak logolt ETH csomagok, ide pushold őket:
+        // { "ts": ms, "src": "10.0.0.10:6000", "len": 64, "meta": "zone=1" }
+        cJSON_AddItemToObject(root, "last_eth", last_eth);
+    }
+
+    // JSON stringgé alakítás és kiküldés
+    char *json_str = cJSON_PrintUnformatted(root);
+    if (!json_str) {
+        cJSON_Delete(root);
+        return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "JSON error");
+    }
+
+    httpd_resp_set_type(req, "application/json");
+    res = httpd_resp_send(req, json_str, HTTPD_RESP_USE_STRLEN);
+
+    cJSON_free(json_str);
+    cJSON_Delete(root);
+
+    return res;
+}
+
+/* Csak /api/stats regisztrálása */
 
 void web_stats_register_handlers(httpd_handle_t h)
 {
