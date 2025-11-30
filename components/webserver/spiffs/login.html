@@ -75,6 +75,9 @@
   .ok{background:var(--ok)}.warn{background:var(--warn)}.off{background:#777}
   .foot{color:var(--muted);font-size:11px;text-align:center;margin-top:10px}
 
+  /* ÚJ: alcím két sorra bontva */
+  #subtitle_main{margin-bottom:2px;}
+  #subtitle_desc{color:var(--muted);font-size:11px;margin-top:0;margin-bottom:14px;}
 </style>
 </head>
 <body>
@@ -125,7 +128,6 @@
             <th>Státusz</th>
             <th>Ethernet</th>
             <th>BLE</th>
-            <th>Célkimenetek</th>
           </tr>
           <tbody id="status-body">
             <tr><td colspan="4" class="sub">Töltés…</td></tr>
@@ -224,12 +226,8 @@ async function loadStatus(){
          <td><span class="dot ${cls}"></span>${hbText}</td>
          <td>${ethText}</td>
          <td>${bleText}</td>
-         <td>${outsText}</td>
        </tr>`;
-  }catch(e){
-    document.getElementById('status-body').innerHTML =
-      `<tr><td colspan="4" class="sub">Nem érhető el az állapot.</td></tr>`;
-  }
+  }catch(e){}
 }
 
 async function login(){
