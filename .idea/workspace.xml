@@ -5,9 +5,7 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="d7727baf-cd08-430d-884d-b4e040b4a9ee" name="Changes" comment="a3">
-      <change beforePath="$PROJECT_DIR$/components/webserver/CMakeLists.txt" beforeDir="false" afterPath="$PROJECT_DIR$/components/webserver/CMakeLists.txt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/components/webserver/web_stats.c" beforeDir="false" afterPath="$PROJECT_DIR$/components/webserver/web_stats.c" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/components/webserver/web_stats.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/components/webserver/web_stats.cpp" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/webserver/spiffs/web_stats.html" beforeDir="false" afterPath="$PROJECT_DIR$/components/webserver/spiffs/web_stats.html" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -97,6 +95,7 @@
       <workItem from="1764504118757" duration="365000" />
       <workItem from="1764505239899" duration="2026000" />
       <workItem from="1764507787489" duration="7878000" />
+      <workItem from="1764518361618" duration="908000" />
     </task>
     <task id="LOCAL-00006" summary="a1">
       <option name="closed" value="true" />

@@ -201,32 +201,40 @@
     height:100% !important;
   }
 
-  /* Donut kártya */
-  .gauge-grid{
+  .donut-grid{
     display:grid;
     grid-template-columns:repeat(auto-fit,minmax(260px,1fr));
-    gap:20px;
-    align-items:stretch;
+    gap:32px;
+    align-items:center;
+    justify-items:center;
+    padding-top:10px;
   }
-  .gauge{
-    display:flex;
-    flex-direction:column;
-    gap:6px;
+  .donut-wrap{
+    width:240px;
+    text-align:center;
   }
-  .gauge-chart{
-    position:relative;
-    width:100%;
-    height:260px;
+  .donut-title{
+    font-size:13px;
+    margin-bottom:6px;
+    color:var(--muted);
   }
-  .gauge-chart canvas{
-    width:100% !important;
-    height:100% !important;
-  }
-  .gauge-legend{
-    display:flex;
-    flex-wrap:wrap;
-    gap:12px;
+  .donut-legend{
+    margin-top:6px;
     font-size:12px;
+    display:flex;
+    justify-content:center;
+    gap:12px;
+  }
+  .legend-label{
+    display:inline-flex;
+    align-items:center;
+    gap:4px;
+  }
+  .legend-color{
+    width:10px;
+    height:10px;
+    border-radius:2px;
+    background:rgba(255,255,255,.3);
   }
 
   .table-wrap{
@@ -377,29 +385,35 @@
       </div>
     </div>
     <div class="bd">
-      <div class="gauge-grid">
-        <div class="gauge">
-          <div class="sec-title">CPU terhelés</div>
-          <div class="gauge-chart">
-            <canvas id="chartCpuGauge"></canvas>
+      <div class="donut-grid">
+        <div class="donut-wrap">
+          <div class="donut-title">CPU terhelés</div>
+          <canvas id="chartCpu"></canvas>
+          <div class="donut-legend">
+            <span class="legend-label">
+              <span class="legend-color" id="legendCpuUsed"></span> Használt
+            </span>
+            <span class="legend-label">
+              <span class="legend-color" id="legendCpuIdle"></span> Idle
+            </span>
           </div>
-          <div class="gauge-legend">
-            <span class="muted">Használt:</span>
-            <span class="mono" id="lblCpuUsed">–</span>
-            <span class="muted">Idle:</span>
-            <span class="mono" id="lblCpuIdle">–</span>
+          <div class="sec-title" style="margin-top:8px;font-size:12px;">
+            Használt: <span id="lblCpuUsed">–</span> • Idle: <span id="lblCpuIdle">–</span>
           </div>
         </div>
-        <div class="gauge">
-          <div class="sec-title">Belső heap kihasználtság</div>
-          <div class="gauge-chart">
-            <canvas id="chartHeapGauge"></canvas>
+        <div class="donut-wrap">
+          <div class="donut-title">Belső heap kihasználtság</div>
+          <canvas id="chartHeap"></canvas>
+          <div class="donut-legend">
+            <span class="legend-label">
+              <span class="legend-color" id="legendHeapUsed"></span> Használt
+            </span>
+            <span class="legend-label">
+              <span class="legend-color" id="legendHeapFree"></span> Szabad
+            </span>
           </div>
-          <div class="gauge-legend">
-            <span class="muted">Használt:</span>
-            <span class="mono" id="lblHeapUsed">–</span>
-            <span class="muted">Szabad:</span>
-            <span class="mono" id="lblHeapFree">–</span>
+          <div class="sec-title" style="margin-top:8px;font-size:12px;">
+            Használt: <span id="lblHeapUsed">–</span> • Szabad: <span id="lblHeapFree">–</span>
           </div>
         </div>
       </div>
@@ -462,35 +476,6 @@
 </div>
 
 <script>
-/*
-  A backendben most a web_stats.cpp / api_stats_get() fut:
-
-  {
-    "uptime_ms": 123456,
-    "cpu": {
-      "mhz": 240,
-      "cores": 2,
-      "cores_load": [23, 12],
-      "total": 18            // % (0..100)
-    },
-    "chip": { ... },
-    "flash": { "bytes": ... },
-    "heap": {
-      "free": 123456,
-      "min_free": 111111,
-      "int_free": ...,
-      "int_total": ...,
-      "int_used": ...,
-      "psram_free": ...,
-      "psram_total": ...,
-      "psram_used": ...
-    }
-  }
-
-  BLE / ETH / samples / last_ble / last_eth egyelőre nincsenek benne → ezekre a UI csak
-  "–"-t fog mutatni, amíg a backendbe nem kerülnek be.
-*/
-
 const $ = id => document.getElementById(id);
 
 // ===== pill style helper =====
@@ -507,12 +492,10 @@ function setPill(el, level, text){
 // ===== KPI formázók =====
 function fmtSeconds(sec){
   if(!Number.isFinite(sec)) return '–';
-  const d = Math.floor(sec / 86400);
-  sec -= d * 86400;
-  const h = Math.floor(sec / 3600);
-  sec -= h * 3600;
-  const m = Math.floor(sec / 60);
-  sec -= m * 60;
+  sec = Math.floor(sec);
+  const d = Math.floor(sec / 86400); sec -= d * 86400;
+  const h = Math.floor(sec / 3600);  sec -= h * 3600;
+  const m = Math.floor(sec / 60);    sec -= m * 60;
   const parts = [];
   if(d) parts.push(d + ' nap');
   if(h) parts.push(h + ' óra');
@@ -558,8 +541,8 @@ let heapGauge    = null;
 function initCharts(){
   const trafficCtx = document.getElementById('chartTraffic');
   const errorCtx   = document.getElementById('chartErrors');
-  const cpuCtx     = document.getElementById('chartCpuGauge');
-  const heapCtx    = document.getElementById('chartHeapGauge');
+  const cpuCtx     = document.getElementById('chartCpu');
+  const heapCtx    = document.getElementById('chartHeap');
 
   trafficChart = new Chart(trafficCtx, {
     type: 'line',
@@ -586,7 +569,7 @@ function initCharts(){
       animation:false,
       interaction:{mode:'index',intersect:false},
       plugins:{
-        legend:{labels:{font:{size:11}}},
+        legend:{labels:{font:{size:11}}}
       },
       scales:{
         x:{ticks:{maxTicksLimit:8,font:{size:10}}},
@@ -629,33 +612,48 @@ function initCharts(){
     }
   });
 
-  const doughnutOpts = {
-    responsive:true,
-    maintainAspectRatio:false,
-    cutout:'65%',
-    plugins:{
-      legend:{labels:{font:{size:11}}}
-    },
-    animation:false
-  };
-
   cpuGauge = new Chart(cpuCtx, {
-    type:'doughnut',
-    data:{
-      labels:['Használt','Idle'],
-      datasets:[{data:[0,100]}]
+    type: 'doughnut',
+    data: {
+      labels: ['Használt','Idle'],
+      datasets: [{
+        data: [0,100],
+        borderWidth: 0
+      }]
     },
-    options:doughnutOpts
+    options: {
+      cutout: '65%',
+      plugins:{
+        legend:{display:false}
+      }
+    }
   });
 
   heapGauge = new Chart(heapCtx, {
-    type:'doughnut',
-    data:{
-      labels:['Használt','Szabad'],
-      datasets:[{data:[0,100]}]
+    type: 'doughnut',
+    data: {
+      labels: ['Használt','Szabad'],
+      datasets: [{
+        data: [0,100],
+        borderWidth: 0
+      }]
     },
-    options:doughnutOpts
+    options: {
+      cutout: '65%',
+      plugins:{
+        legend:{display:false}
+      }
+    }
   });
+
+  // legend színek (Chart.js első dataset színei)
+  const cpuColors  = cpuGauge.data.datasets[0].backgroundColor || ['#2da8ff','#ff5d5d'];
+  const heapColors = heapGauge.data.datasets[0].backgroundColor || ['#2da8ff','#ff5d5d'];
+
+  $('#legendCpuUsed').style.background  = cpuColors[0] || '#2da8ff';
+  $('#legendCpuIdle').style.background  = cpuColors[1] || '#ff5d5d';
+  $('#legendHeapUsed').style.background = heapColors[0] || '#2da8ff';
+  $('#legendHeapFree').style.background = heapColors[1] || '#ff5d5d';
 }
 
 const MAX_POINTS = 120; // kb. 4 perc 2s-es mintavételezésnél
@@ -677,7 +675,7 @@ function updateChartsFromSamples(samples){
   const start = Math.max(0, samples.length - MAX_POINTS);
   for(let i=start;i<samples.length;i++){
     const s = samples[i] || {};
-    const tLabel = fmtTime(s.t ?? 0);
+    const tLabel = fmtTime((s.t ?? 0));
     tData.labels.push(tLabel);
     tData.datasets[0].data.push(Number.isFinite(s.ble_rx) ? s.ble_rx : null);
     tData.datasets[1].data.push(Number.isFinite(s.eth_rx) ? s.eth_rx : null);
@@ -693,37 +691,35 @@ function updateChartsFromSamples(samples){
 
 // ===== KPI és táblák frissítése =====
 function updateKpis(stat){
-  // uptime_sec (új) vagy uptime_ms (jelenlegi backend)
+  // Uptime
   let uptimeSec = Number(stat.uptime_sec);
-  if(!Number.isFinite(uptimeSec) && Number.isFinite(stat.uptime_ms)){
-    uptimeSec = stat.uptime_ms / 1000.0;
+  if(!Number.isFinite(uptimeSec) && stat.uptime_ms != null){
+    uptimeSec = Number(stat.uptime_ms)/1000;
   }
-
   $('#kpiUptime').textContent    = fmtSeconds(uptimeSec);
-  $('#kpiUptimeRaw').textContent = Number.isFinite(uptimeSec) ? uptimeSec.toFixed(0) + ' s' : '';
+  $('#kpiUptimeRaw').textContent = Number.isFinite(uptimeSec) ? uptimeSec.toFixed(0)+' s' : '';
 
-  // CPU load: 0..1 (cpu.load) vagy % (cpu.total)
+  // CPU
   const cpu = stat.cpu || {};
-  let cpuFrac = Number(cpu.load);
-  if(!Number.isFinite(cpuFrac) && Number.isFinite(cpu.total)){
-    cpuFrac = cpu.total / 100.0;
+  let cpuPct = Number(cpu.total);
+  if(!Number.isFinite(cpuPct) && cpu.load != null){
+    const f = Number(cpu.load);
+    if(Number.isFinite(f)) cpuPct = f*100.0;
   }
-  const cpuPct = Number.isFinite(cpuFrac) ? cpuFrac*100.0 : NaN;
-
   $('#kpiCpuLoad').textContent = Number.isFinite(cpuPct)
-    ? cpuPct.toFixed(1) + ' %'
+    ? cpuPct.toFixed(1)+' %'
     : '–';
 
-  // Heap: össz heap vagy belső heap free
+  // Heap
   const heap = stat.heap || {};
   let heapFree = Number(heap.free);
-  if(!Number.isFinite(heapFree) && Number.isFinite(heap.int_free)){
-    heapFree = heap.int_free;
+  if(!Number.isFinite(heapFree) && heap.int_free != null){
+    heapFree = Number(heap.int_free);
   }
-
-  $('#kpiHeap').textContent    = fmtBytes(heapFree || NaN);
+  $('#kpiHeap').textContent    = fmtBytes(heapFree);
   $('#kpiHeapRaw').textContent = Number.isFinite(heapFree) ? heapFree + ' B' : '';
 
+  // BLE/ETH KPI – most placeholder (0), ha van adatod, ide tedd be
   const ble = stat.ble || {};
   const eth = stat.eth || {};
   const bleTotal = (ble.rx_total||0) + (ble.tx_total||0);
@@ -747,38 +743,39 @@ function updateCpuMemGauges(stat){
   if(!cpuGauge || !heapGauge) return;
 
   const cpu = stat.cpu || {};
-  let cpuFrac = Number(cpu.load);
-  if(!Number.isFinite(cpuFrac) && Number.isFinite(cpu.total)){
-    cpuFrac = cpu.total / 100.0;
+  let cpuPct = Number(cpu.total);
+  if(!Number.isFinite(cpuPct) && cpu.load != null){
+    const f = Number(cpu.load);
+    if(Number.isFinite(f)) cpuPct = f*100.0;
   }
-  if(!Number.isFinite(cpuFrac)) cpuFrac = NaN;
+  if(!Number.isFinite(cpuPct) || cpuPct < 0) cpuPct = 0;
+  if(cpuPct > 100) cpuPct = 100;
 
-  let cpuUsedPct = Number.isFinite(cpuFrac) ? cpuFrac*100.0 : 0;
-  if(cpuUsedPct < 0) cpuUsedPct = 0;
-  if(cpuUsedPct > 100) cpuUsedPct = 100;
+  const cpuUsedPct = cpuPct;
   const cpuIdlePct = 100 - cpuUsedPct;
 
   cpuGauge.data.datasets[0].data = [cpuUsedPct, cpuIdlePct];
   cpuGauge.update('none');
 
-  $('#lblCpuUsed').textContent = Number.isFinite(cpuFrac) ? cpuUsedPct.toFixed(1) + ' %' : '–';
-  $('#lblCpuIdle').textContent = Number.isFinite(cpuFrac) ? cpuIdlePct.toFixed(1) + ' %' : '–';
+  $('#lblCpuUsed').textContent = cpuUsedPct.toFixed(1)+' %';
+  $('#lblCpuIdle').textContent = cpuIdlePct.toFixed(1)+' %';
 
   const heap = stat.heap || {};
   const intTotal = Number(heap.int_total);
   let intUsed   = Number(heap.int_used);
-  if(!Number.isFinite(intUsed) && Number.isFinite(intTotal) && Number.isFinite(heap.int_free)){
-    intUsed = intTotal - heap.int_free;
+
+  if(!Number.isFinite(intUsed) && Number.isFinite(intTotal) && heap.int_free != null){
+    const intFree = Number(heap.int_free);
+    if(Number.isFinite(intFree)) intUsed = intTotal - intFree;
   }
 
-  let heapFrac = NaN;
+  let heapUsedPct = 0;
   if(Number.isFinite(intTotal) && intTotal > 0 && Number.isFinite(intUsed)){
-    heapFrac = intUsed / intTotal;
+    heapUsedPct = (intUsed/intTotal)*100.0;
   }
-
-  let heapUsedPct = Number.isFinite(heapFrac) ? heapFrac*100.0 : 0;
   if(heapUsedPct < 0) heapUsedPct = 0;
   if(heapUsedPct > 100) heapUsedPct = 100;
+
   const heapFreePct = 100 - heapUsedPct;
 
   heapGauge.data.datasets[0].data = [heapUsedPct, heapFreePct];
@@ -794,14 +791,13 @@ function updateCpuMemGauges(stat){
 
 function updateLinkPills(stat){
   const link = stat.link || {};
-  setPill($('#pillBle'), link.ble_up ? 'ok' : 'warn',
-          link.ble_up ? 'BLE: élő kapcsolat' : 'BLE: ismeretlen');
+  const bleUp  = !!link.ble_up;
+  const ethUp  = !!link.eth_up;
+  const mainUp = !!link.main_up;
 
-  setPill($('#pillEth'), link.eth_up ? 'ok' : 'warn',
-          link.eth_up ? 'ETH: élő kapcsolat' : 'ETH: ismeretlen');
-
-  setPill($('#pillMain'), link.main_up ? 'ok' : 'warn',
-          link.main_up ? 'Fő szerver: elérhető' : 'Fő szerver: ismeretlen');
+  setPill($('#pillBle'),  bleUp  ? 'ok'   : 'err', bleUp  ? 'BLE: élő kapcsolat'     : 'BLE: nincs kapcsolat');
+  setPill($('#pillEth'),  ethUp  ? 'ok'   : 'err', ethUp  ? 'ETH: élő kapcsolat'     : 'ETH: nincs IP / link');
+  setPill($('#pillMain'), mainUp ? 'ok'   : 'warn',mainUp ? 'Fő szerver: elérhető'   : 'Fő szerver: nem elérhető');
 }
 
 function updateLastTables(stat){
@@ -856,21 +852,20 @@ async function fetchStatsOnce(){
     updateKpis(stat);
     updateLinkPills(stat);
     updateChartsFromSamples(stat.samples || []);
-    updateLastTables(stat);
     updateCpuMemGauges(stat);
+    updateLastTables(stat);
 
-    const ts  = stat.ts ? new Date(stat.ts*1000) : new Date();
-    const lbl = $('#lblLastUpdate');
-    if (lbl) {
-      lbl.textContent = 'Utolsó frissítés: ' +
-        ts.toLocaleTimeString('hu-HU',{hour12:false});
+    let tsSec = Number(stat.ts);
+    if(!Number.isFinite(tsSec) && stat.uptime_sec != null){
+      tsSec = Number(stat.uptime_sec);
     }
+    const ts = Number.isFinite(tsSec) ? new Date(tsSec*1000) : new Date();
+
+    $('#lblLastUpdate').textContent = 'Utolsó frissítés: ' +
+      ts.toLocaleTimeString('hu-HU',{hour12:false});
   }catch(e){
     console.error('[stats] hiba', e);
-    const lbl = $('#lblLastUpdate');
-    if (lbl) {
-      lbl.textContent = 'Utolsó frissítés: hiba – ' + e.message;
-    }
+    $('#lblLastUpdate').textContent = 'Utolsó frissítés: hiba – ' + e.message;
   }
 }
 
