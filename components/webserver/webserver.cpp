@@ -139,6 +139,8 @@ static esp_err_t options_ok(httpd_req_t* req){
     return httpd_resp_sendstr(req, "");
 }
 
+static esp_err_t send_file(httpd_req_t* req, const char* path, const char* ctype);
+
 static esp_err_t stats_get(httpd_req_t* r){
     // ugyanaz a jogosultság, mint a Super User oldalnál
     if(!require_role(r, ROLE_BLE)) return ESP_FAIL;
@@ -891,10 +893,10 @@ esp_err_t webserver_start(){
     u.uri="/ble-data";         u.handler=ble_get;          httpd_register_uri_handler(s_http,&u);
     u.uri="/admin";            u.handler=admin_get;        httpd_register_uri_handler(s_http,&u);
     u.uri="/super_user.html";  u.handler=super_user_get;   httpd_register_uri_handler(s_http,&u);
+    u.uri="/stats";            u.handler=stats_get;        httpd_register_uri_handler(s_http,&u);
 
     // API GET-ek
     u.uri="/api/status";       u.handler=api_status_get;   httpd_register_uri_handler(s_http,&u);
-    u.uri="/stats";            u.handler=stats_get;        httpd_register_uri_handler(s_http,&u);
 
     // ÚJ: meta
     httpd_uri_t get_meta{};
