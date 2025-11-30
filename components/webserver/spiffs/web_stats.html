@@ -814,11 +814,16 @@ function updateLastTables(stat){
     const rssi= (r.rssi !== undefined) ? (r.rssi + ' dBm') : '–';
     const len = (r.len !== undefined) ? r.len : '–';
     const meta= r.meta || '';
+
+    const metaHtml = meta
+      ? '<span class="pill-small mono">' + meta + '</span>'
+      : '';
+
     return `<tr>
       <td class="mono">${t}</td>
       <td class="mono">${rssi}</td>
       <td class="mono">${len}</td>
-      <td>${meta ? `<span class="pill-small mono">${meta}</span>` : ''}</td>
+      <td>${metaHtml}</td>
     </tr>`;
   };
 
@@ -827,11 +832,16 @@ function updateLastTables(stat){
     const src = r.src || '–';
     const len = (r.len !== undefined) ? r.len : '–';
     const meta= r.meta || '';
+
+    const metaHtml = meta
+      ? '<span class="pill-small mono">' + meta + '</span>'
+      : '';
+
     return `<tr>
       <td class="mono">${t}</td>
       <td class="mono">${src}</td>
       <td class="mono">${len}</td>
-      <td>${meta ? `<span class="pill-small mono">${meta}</span>` : ''}</td>
+      <td>${metaHtml}</td>
     </tr>`;
   };
 
