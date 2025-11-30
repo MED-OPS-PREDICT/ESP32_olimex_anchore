@@ -304,6 +304,7 @@
 <header>
   <h1>Super User</h1>
   <div class="muted">ESP lekér • DWM lekér • Beállít mindkettő</div>
+  <button class="btn ghost" id="btnLogout">Kijelentkezés</button>
 </header>
 
 <div class="wrap">
@@ -346,8 +347,7 @@
 
         <div></div>
         <div class="toolbar">
-          <button class="btn" id="btnConnect">Csatlakozás</button>
-          <button class="btn ghost" id="btnOpenSerial">Soros megnyitása</button>
+          <button class="btn ghost" id="btnRebootEsp">Újraindítás</button>
         </div>
 
       </div>
@@ -528,6 +528,11 @@ const GROUPS = {
     {k:'PHY_SFDTO',  edit:true, to:'both'}
   ],
   ips: [
+    {hdr:'Eszköz metaadatok'},
+      {k:'ZONE_NAME',   edit:true, to:'esp', label:'Zóna név'},
+      {k:'DEVICE_NAME', edit:true, to:'esp', label:'Eszköz neve'},
+      {k:'DEVICE_DESC', edit:true, to:'esp', label:'Eszköz rövid leírása'},
+
     {hdr:'Saját ethernet (ESP)'},
       {k:'ETH_MODE', edit:true, to:'esp', label:'Mód (0=DHCP, 1=STATIKUS)'},
       {k:'ETH_IP',   edit:true, to:'esp', label:'Saját IP'},
@@ -961,6 +966,32 @@ renderAll();
 //  - DWM RAM-cache lekérdezés (/api/dwm_last) – gyors
 doEspGet();
 doDwmGetCached();
+
+$('btnLogout').addEventListener('click', () => {
+  // Session cookie érvénytelenítése
+  document.cookie = "SID=; Path=/; Max-Age=0;";
+
+  // Átirányítás a login oldalra
+  window.location.href = "/login";
+});
+
+$('btnRebootEsp').addEventListener('click', async () => {
+  if (!confirm("Biztosan újraindítod az ESP-t?")) return;
+
+  try {
+    const r = await fetch('/api/reboot', {
+      method: 'POST',
+      headers: { 'Authorization': 'Basic ' + btoa('admin:admin') }
+    });
+    logln('[ESP] újraindítás kérve');
+
+    // Kis várakozás, majd reload
+    setTimeout(() => { location.reload(); }, 1500);
+
+  } catch (e) {
+    logln('[ESP] reboot hiba: ' + e.message);
+  }
+});
 
 </script>
 </body>

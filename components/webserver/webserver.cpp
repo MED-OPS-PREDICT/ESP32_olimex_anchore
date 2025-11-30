@@ -26,6 +26,9 @@
 #include "error_code_decoding.h"
 #include "hb_status.h"
 
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+
 extern "C" void ble_http_bridge_init(void);
 extern "C" void http_register_routes(httpd_handle_t h);
 
@@ -305,6 +308,11 @@ struct EspCfg {
     char     ETH_MASK[16] = "0.0.0.0";
     char     ETH_GW[16]   = "0.0.0.0";
 
+    // ÚJ: metaadatok
+    char ZONE_NAME[32]   = "";
+    char DEVICE_NAME[32] = "";
+    char DEVICE_DESC[64] = "";
+
 } g_cfg;
 
 /* ==== NVS kezelés az ESP confighoz (g_cfg) ==== */
@@ -401,7 +409,8 @@ static bool find_key(const char* body, const char* key, const char** val_start){
     *val_start=p; return true;
 }
 
-static void json_cfg_print(char* buf, size_t sz, const EspCfg& c){
+static void json_cfg_print(char* buf, size_t sz, const EspCfg& c)
+{
     snprintf(buf, sz,
       "{"
       "\"NETWORK_ID\":%u,"
@@ -434,7 +443,10 @@ static void json_cfg_print(char* buf, size_t sz, const EspCfg& c){
       "\"SERVICE_PORT\":%u,"
       "\"SERVICE_EN\":%u,"
 
-      "\"AES_KEY\":\"%s\""
+      "\"AES_KEY\":\"%s\","
+      "\"ZONE_NAME\":\"%s\","
+      "\"DEVICE_NAME\":\"%s\","
+      "\"DEVICE_DESC\":\"%s\""
       "}\n",
       (unsigned)c.NETWORK_ID,
       (unsigned)c.ZONE_ID,
@@ -466,10 +478,12 @@ static void json_cfg_print(char* buf, size_t sz, const EspCfg& c){
       (unsigned)c.SERVICE_PORT,
       (unsigned)c.SERVICE_EN,
 
-      c.aes_key_hex
+      c.aes_key_hex,
+      c.ZONE_NAME,
+      c.DEVICE_NAME,
+      c.DEVICE_DESC
     );
 }
-
 
 // forward deklarációk
 static void gcfg_from_globals(void);
@@ -544,7 +558,7 @@ static esp_err_t api_config_get(httpd_req_t* req){
 
     gcfg_from_globals();  // <- mindig a NET/IPS jelenlegi állapotából származtasd
 
-    char buf[512];
+    char buf[1024];
     json_cfg_print(buf,sizeof(buf),g_cfg);
     httpd_resp_set_type(req,"application/json");
     return httpd_resp_send(req, buf, strlen(buf));
@@ -611,6 +625,11 @@ static esp_err_t api_config_post(httpd_req_t* req)
 
     parse_str(body.data(), "\"AES_KEY\"", g_cfg.aes_key_hex, sizeof(g_cfg.aes_key_hex));
 
+    // ÚJ: metaadatok (zóna név, eszköz név, leírás)
+    parse_str(body.data(), "\"ZONE_NAME\"",   g_cfg.ZONE_NAME,   sizeof(g_cfg.ZONE_NAME));
+    parse_str(body.data(), "\"DEVICE_NAME\"", g_cfg.DEVICE_NAME, sizeof(g_cfg.DEVICE_NAME));
+    parse_str(body.data(), "\"DEVICE_DESC\"", g_cfg.DEVICE_DESC, sizeof(g_cfg.DEVICE_DESC));
+
     // 2) g_cfg → NET / IPS (rendszer-szintű módosítások)
     globals_from_gcfg();
 
@@ -622,6 +641,16 @@ static esp_err_t api_config_post(httpd_req_t* req)
     httpd_resp_set_type(req, "application/json");
     return httpd_resp_sendstr(req, "{\"ok\":true}\n");
 
+}
+
+static esp_err_t api_reboot(httpd_req_t* req) {
+    if (!require_role(req, ROLE_BLE)) return ESP_FAIL;  // ROLE_ROOT helyett
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_sendstr(req, "{\"ok\":true}");
+
+    vTaskDelay(pdMS_TO_TICKS(200));
+    esp_restart();
+    return ESP_OK;
 }
 
 /* NET, IPS -> g_cfg (UI tükör) */
@@ -686,6 +715,30 @@ static void globals_from_gcfg(void)
         aes_sender_set_key_hex(g_cfg.aes_key_hex);
     }
 
+}
+
+static esp_err_t api_meta_get(httpd_req_t* req)
+{
+    add_cors(req);
+    add_no_cache(req);
+
+    // Itt feltételezzük, hogy g_cfg már szinkronban van NVS-sel
+    // (webserver_start elején esp_cfg_load_from_nvs + globals_from_gcfg/gcfg_from_globals)
+
+    char buf[256];
+    int n = snprintf(buf, sizeof(buf),
+        "{"
+          "\"zone_name\":\"%s\","
+          "\"device_name\":\"%s\","
+          "\"device_desc\":\"%s\""
+        "}\n",
+        g_cfg.ZONE_NAME,
+        g_cfg.DEVICE_NAME,
+        g_cfg.DEVICE_DESC
+    );
+
+    httpd_resp_set_type(req, "application/json");
+    return httpd_resp_send(req, buf, n);
 }
 
 /* ================= /api/status ================= */
@@ -835,6 +888,14 @@ esp_err_t webserver_start(){
 
     // API GET-ek
     u.uri="/api/status";       u.handler=api_status_get;   httpd_register_uri_handler(s_http,&u);
+
+    // ÚJ: meta
+    httpd_uri_t get_meta{};
+    get_meta.method = HTTP_GET;
+    get_meta.uri    = "/api/meta";
+    get_meta.handler= api_meta_get;
+    httpd_register_uri_handler(s_http, &get_meta);
+
     httpd_uri_t get_cfg{};  get_cfg.method=HTTP_GET;    get_cfg.uri="/api/config";   get_cfg.handler=api_config_get;
     httpd_register_uri_handler(s_http,&get_cfg);
 
@@ -857,6 +918,14 @@ esp_err_t webserver_start(){
     // Root és catch-all → login
     httpd_uri_t root{}; root.method=HTTP_GET; root.uri="/";  root.handler=login_get; httpd_register_uri_handler(s_http,&root);
     httpd_uri_t any{};  any .method=HTTP_GET; any .uri="/*"; any .handler=login_get; httpd_register_uri_handler(s_http,&any);
+
+    httpd_uri_t uri_reboot = {
+        .uri      = "/api/reboot",
+        .method   = HTTP_POST,
+        .handler  = api_reboot,
+        .user_ctx = NULL
+    };
+    httpd_register_uri_handler(s_http, &uri_reboot);
 
     ESP_LOGI(TAG,"webserver started");
 
