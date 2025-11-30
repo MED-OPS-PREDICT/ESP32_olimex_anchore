@@ -940,6 +940,9 @@ esp_err_t webserver_start(){
     };
     httpd_register_uri_handler(s_http, &uri_reboot);
 
+    web_stats_init();
+    web_stats_register_handlers(s_http);
+
     ESP_LOGI(TAG,"webserver started");
 
     return ESP_OK;
