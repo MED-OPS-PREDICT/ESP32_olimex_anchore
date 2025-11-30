@@ -201,6 +201,34 @@
     height:100% !important;
   }
 
+  /* Donut kártya */
+  .gauge-grid{
+    display:grid;
+    grid-template-columns:repeat(auto-fit,minmax(260px,1fr));
+    gap:20px;
+    align-items:stretch;
+  }
+  .gauge{
+    display:flex;
+    flex-direction:column;
+    gap:6px;
+  }
+  .gauge-chart{
+    position:relative;
+    width:100%;
+    height:260px;
+  }
+  .gauge-chart canvas{
+    width:100% !important;
+    height:100% !important;
+  }
+  .gauge-legend{
+    display:flex;
+    flex-wrap:wrap;
+    gap:12px;
+    font-size:12px;
+  }
+
   .table-wrap{
     width:100%;
     overflow-x:auto;
@@ -231,22 +259,6 @@
     font-size:11px;
     background:rgba(255,255,255,.04);
     color:var(--muted);
-  }
-
-  /* Donut layout */
-  .chart-grid-2{
-    display:grid;
-    grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
-    gap:12px;
-  }
-  .chart-gauge-box{
-    position:relative;
-    width:100%;
-    height:200px;
-  }
-  .chart-gauge-box canvas{
-    width:100% !important;
-    height:100% !important;
   }
 
   @media (max-width: 1100px){
@@ -281,6 +293,11 @@
       <div class="hd-title">
         <span>Rendszer összefoglaló</span>
         <small>Uptime, CPU, memória, BLE / Ethernet link állapot</small>
+      </div>
+      <div class="stat-row">
+        <span id="pillBle"  class="stat-pill warn">BLE: ismeretlen</span>
+        <span id="pillEth"  class="stat-pill warn">ETH: ismeretlen</span>
+        <span id="pillMain" class="stat-pill warn">Fő szerver: ismeretlen</span>
       </div>
     </div>
     <div class="bd">
@@ -319,7 +336,7 @@
     </div>
   </section>
 
-  <!-- Felső rács: forgalmi grafikonok + hibák + CPU/Mem donutok
+  <!-- Felső rács: forgalmi grafikonok + összesített hibák -->
   <div class="grid-main">
     <section class="card">
       <div class="hd">
@@ -348,37 +365,48 @@
           <canvas id="chartErrors"></canvas>
         </div>
       </div>
-    </section> -->
-
-    <!-- CPU + memória donutok -->
-    <section class="card">
-      <div class="hd">
-        <div class="hd-title">
-          <span>CPU és memória kihasználtság</span>
-          <small>Donut diagramok (pillanatnyi állapot)</small>
-        </div>
-      </div>
-      <div class="bd">
-        <div class="chart-grid-2">
-          <div>
-            <div class="sec-title">CPU terhelés</div>
-            <div class="chart-gauge-box">
-              <canvas id="chartCpuGauge"></canvas>
-            </div>
-          </div>
-          <div>
-            <div class="sec-title">Belső heap kihasználtság</div>
-            <div class="chart-gauge-box">
-              <canvas id="chartHeapGauge"></canvas>
-            </div>
-          </div>
-        </div>
-      </div>
     </section>
-    <!-- /CPU + memória donutok -->
   </div>
 
-  <!-- Alsó rács: utolsó BLE / ETH csomagok
+  <!-- CPU + memória donutok -->
+  <section class="card full">
+    <div class="hd">
+      <div class="hd-title">
+        <span>CPU és memória kihasználtság</span>
+        <small>Donut diagramok (pillanatnyi állapot)</small>
+      </div>
+    </div>
+    <div class="bd">
+      <div class="gauge-grid">
+        <div class="gauge">
+          <div class="sec-title">CPU terhelés</div>
+          <div class="gauge-chart">
+            <canvas id="chartCpuGauge"></canvas>
+          </div>
+          <div class="gauge-legend">
+            <span class="muted">Használt:</span>
+            <span class="mono" id="lblCpuUsed">–</span>
+            <span class="muted">Idle:</span>
+            <span class="mono" id="lblCpuIdle">–</span>
+          </div>
+        </div>
+        <div class="gauge">
+          <div class="sec-title">Belső heap kihasználtság</div>
+          <div class="gauge-chart">
+            <canvas id="chartHeapGauge"></canvas>
+          </div>
+          <div class="gauge-legend">
+            <span class="muted">Használt:</span>
+            <span class="mono" id="lblHeapUsed">–</span>
+            <span class="muted">Szabad:</span>
+            <span class="mono" id="lblHeapFree">–</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Alsó rács: utolsó BLE / ETH csomagok -->
   <div class="grid-bottom">
     <section class="card">
       <div class="hd">
@@ -429,60 +457,38 @@
         </div>
       </div>
     </section>
-  </div> -->
+  </div>
 
 </div>
 
 <script>
 /*
-  FELTÉTELEZETT /api/stats JSON STRUKTÚRA – backend oldalon ehhez igazíts:
+  A backendben most a web_stats.cpp / api_stats_get() fut:
 
   {
-    "ts": 1732968000,           // másodperc alapú timestamp
-    "uptime_sec": 12345,
-    "cpu": { "load": 0.17 },
+    "uptime_ms": 123456,
+    "cpu": {
+      "mhz": 240,
+      "cores": 2,
+      "cores_load": [23, 12],
+      "total": 18            // % (0..100)
+    },
+    "chip": { ... },
+    "flash": { "bytes": ... },
     "heap": {
-      "free": 204800,
-      "min_free": 12345,
-      "int_total": 524288,
-      "int_used": 262144,
-      "psram_total": 0,
-      "psram_used": 0
-    },
-    "ble": {
-      "rx_rate": 120.5,         // csomag/s
-      "tx_rate": 30.0,
-      "rx_total": 123456,
-      "tx_total": 34567,
-      "err_rate": 0.2,          // %
-      "err_total": 12
-    },
-    "eth": {
-      "rx_rate": 80.0,
-      "tx_rate": 50.0,
-      "rx_total": 98765,
-      "tx_total": 12345,
-      "err_rate": 0.1,
-      "err_total": 5
-    },
-    "link": {
-      "ble_up": true,
-      "eth_up": true,
-      "main_up": true
-    },
-    "samples": [                // idősor a grafikonhoz
-      { "t": 1732968000000, "ble_rx": 120.5, "eth_rx": 80.0, "ble_err": 0.2, "eth_err": 0.1 }
-      // csak az utolsó néhány perc szükséges
-    ],
-    "last_ble": [
-      { "ts": 1732968000000, "rssi": -70, "len": 32, "meta": "tag=1234" }
-    ],
-    "last_eth": [
-      { "ts": 1732968000500, "src": "10.0.0.10:6000", "len": 64, "meta": "zone=1" }
-    ]
+      "free": 123456,
+      "min_free": 111111,
+      "int_free": ...,
+      "int_total": ...,
+      "int_used": ...,
+      "psram_free": ...,
+      "psram_total": ...,
+      "psram_used": ...
+    }
   }
 
-  A frontend minden mezőt opcionálisan kezel, ha nincs, nem esik szét az oldal.
+  BLE / ETH / samples / last_ble / last_eth egyelőre nincsenek benne → ezekre a UI csak
+  "–"-t fog mutatni, amíg a backendbe nem kerülnek be.
 */
 
 const $ = id => document.getElementById(id);
@@ -552,146 +558,104 @@ let heapGauge    = null;
 function initCharts(){
   const trafficCtx = document.getElementById('chartTraffic');
   const errorCtx   = document.getElementById('chartErrors');
+  const cpuCtx     = document.getElementById('chartCpuGauge');
+  const heapCtx    = document.getElementById('chartHeapGauge');
 
-  if (trafficCtx) {
-    trafficChart = new Chart(trafficCtx, {
-      type: 'line',
-      data: {
-        labels: [],
-        datasets: [
-          {
-            label: 'BLE rx [pkt/s]',
-            data: [],
-            borderWidth: 2,
-            tension: 0.25
-          },
-          {
-            label: 'ETH rx [pkt/s]',
-            data: [],
-            borderWidth: 2,
-            tension: 0.25
-          }
-        ]
-      },
-      options: {
-        responsive:true,
-        maintainAspectRatio:false,
-        animation:false,
-        interaction:{mode:'index',intersect:false},
-        plugins:{
-          legend:{labels:{font:{size:11}}},
+  trafficChart = new Chart(trafficCtx, {
+    type: 'line',
+    data: {
+      labels: [],
+      datasets: [
+        {
+          label: 'BLE rx [pkt/s]',
+          data: [],
+          borderWidth: 2,
+          tension: 0.25
         },
-        scales:{
-          x:{ticks:{maxTicksLimit:8,font:{size:10}}},
-          y:{beginAtZero:true}
+        {
+          label: 'ETH rx [pkt/s]',
+          data: [],
+          borderWidth: 2,
+          tension: 0.25
         }
-      }
-    });
-  }
-
-  if (errorCtx) {
-    errorChart = new Chart(errorCtx, {
-      type: 'line',
-      data: {
-        labels: [],
-        datasets: [
-          {
-            label: 'BLE hiba [%]',
-            data: [],
-            borderWidth: 2,
-            tension: 0.25
-          },
-          {
-            label: 'ETH hiba [%]',
-            data: [],
-            borderWidth: 2,
-            tension: 0.25
-          }
-        ]
+      ]
+    },
+    options: {
+      responsive:true,
+      maintainAspectRatio:false,
+      animation:false,
+      interaction:{mode:'index',intersect:false},
+      plugins:{
+        legend:{labels:{font:{size:11}}},
       },
-      options: {
-        responsive:true,
-        maintainAspectRatio:false,
-        animation:false,
-        interaction:{mode:'index',intersect:false},
-        plugins:{
-          legend:{labels:{font:{size:11}}}
+      scales:{
+        x:{ticks:{maxTicksLimit:8,font:{size:10}}},
+        y:{beginAtZero:true}
+      }
+    }
+  });
+
+  errorChart = new Chart(errorCtx, {
+    type: 'line',
+    data: {
+      labels: [],
+      datasets: [
+        {
+          label: 'BLE hiba [%]',
+          data: [],
+          borderWidth: 2,
+          tension: 0.25
         },
-        scales:{
-          x:{ticks:{maxTicksLimit:8,font:{size:10}}},
-          y:{beginAtZero:true}
+        {
+          label: 'ETH hiba [%]',
+          data: [],
+          borderWidth: 2,
+          tension: 0.25
         }
-      }
-    });
-  }
-
-  // CPU donut
-  const cpuCtx = document.getElementById('chartCpuGauge');
-  if (cpuCtx) {
-    cpuGauge = new Chart(cpuCtx, {
-      type: 'doughnut',
-      data: {
-        labels: ['Használt', 'Idle'],
-        datasets: [{
-          data: [0, 100],
-          borderWidth: 0
-        }]
+      ]
+    },
+    options: {
+      responsive:true,
+      maintainAspectRatio:false,
+      animation:false,
+      interaction:{mode:'index',intersect:false},
+      plugins:{
+        legend:{labels:{font:{size:11}}}
       },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        cutout: '70%',
-        plugins: {
-          legend: {
-            labels: { font: { size: 11 } }
-          },
-          tooltip: {
-            callbacks: {
-              label: ctx => {
-                const lbl = ctx.label || '';
-                const v = ctx.parsed;
-                return `${lbl}: ${v.toFixed(1)} %`;
-              }
-            }
-          }
-        }
+      scales:{
+        x:{ticks:{maxTicksLimit:8,font:{size:10}}},
+        y:{beginAtZero:true}
       }
-    });
-  }
+    }
+  });
 
-  // Heap donut (belső heap)
-  const heapCtx = document.getElementById('chartHeapGauge');
-  if (heapCtx) {
-    heapGauge = new Chart(heapCtx, {
-      type: 'doughnut',
-      data: {
-        labels: ['Használt', 'Szabad'],
-        datasets: [{
-          data: [0, 100],
-          borderWidth: 0
-        }]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        cutout: '70%',
-        plugins: {
-          legend: {
-            labels: { font: { size: 11 } }
-          },
-          tooltip: {
-            callbacks: {
-              label: ctx => {
-                const lbl = ctx.label || '';
-                const v = ctx.parsed;
-                return `${lbl}: ${v.toFixed(1)} %`;
-              }
-            }
-          }
-        }
-      }
-    });
-  }
+  const doughnutOpts = {
+    responsive:true,
+    maintainAspectRatio:false,
+    cutout:'65%',
+    plugins:{
+      legend:{labels:{font:{size:11}}}
+    },
+    animation:false
+  };
+
+  cpuGauge = new Chart(cpuCtx, {
+    type:'doughnut',
+    data:{
+      labels:['Használt','Idle'],
+      datasets:[{data:[0,100]}]
+    },
+    options:doughnutOpts
+  });
+
+  heapGauge = new Chart(heapCtx, {
+    type:'doughnut',
+    data:{
+      labels:['Használt','Szabad'],
+      datasets:[{data:[0,100]}]
+    },
+    options:doughnutOpts
+  });
 }
 
 const MAX_POINTS = 120; // kb. 4 perc 2s-es mintavételezésnél
@@ -729,16 +693,33 @@ function updateChartsFromSamples(samples){
 
 // ===== KPI és táblák frissítése =====
 function updateKpis(stat){
-  const uptimeSec = stat.uptime_sec;
-  const cpuLoad   = stat.cpu?.load;
-  const heapFree  = stat.heap?.free;
+  // uptime_sec (új) vagy uptime_ms (jelenlegi backend)
+  let uptimeSec = Number(stat.uptime_sec);
+  if(!Number.isFinite(uptimeSec) && Number.isFinite(stat.uptime_ms)){
+    uptimeSec = stat.uptime_ms / 1000.0;
+  }
 
   $('#kpiUptime').textContent    = fmtSeconds(uptimeSec);
-  $('#kpiUptimeRaw').textContent = Number.isFinite(uptimeSec) ? uptimeSec + ' s' : '';
+  $('#kpiUptimeRaw').textContent = Number.isFinite(uptimeSec) ? uptimeSec.toFixed(0) + ' s' : '';
 
-  $('#kpiCpuLoad').textContent = Number.isFinite(cpuLoad)
-    ? (cpuLoad*100).toFixed(1) + ' %'
+  // CPU load: 0..1 (cpu.load) vagy % (cpu.total)
+  const cpu = stat.cpu || {};
+  let cpuFrac = Number(cpu.load);
+  if(!Number.isFinite(cpuFrac) && Number.isFinite(cpu.total)){
+    cpuFrac = cpu.total / 100.0;
+  }
+  const cpuPct = Number.isFinite(cpuFrac) ? cpuFrac*100.0 : NaN;
+
+  $('#kpiCpuLoad').textContent = Number.isFinite(cpuPct)
+    ? cpuPct.toFixed(1) + ' %'
     : '–';
+
+  // Heap: össz heap vagy belső heap free
+  const heap = stat.heap || {};
+  let heapFree = Number(heap.free);
+  if(!Number.isFinite(heapFree) && Number.isFinite(heap.int_free)){
+    heapFree = heap.int_free;
+  }
 
   $('#kpiHeap').textContent    = fmtBytes(heapFree || NaN);
   $('#kpiHeapRaw').textContent = Number.isFinite(heapFree) ? heapFree + ' B' : '';
@@ -762,16 +743,65 @@ function updateKpis(stat){
   $('#kpiErrTotal').textContent = errTotal ? (errTotal + ' hiba összesen') : '';
 }
 
+function updateCpuMemGauges(stat){
+  if(!cpuGauge || !heapGauge) return;
+
+  const cpu = stat.cpu || {};
+  let cpuFrac = Number(cpu.load);
+  if(!Number.isFinite(cpuFrac) && Number.isFinite(cpu.total)){
+    cpuFrac = cpu.total / 100.0;
+  }
+  if(!Number.isFinite(cpuFrac)) cpuFrac = NaN;
+
+  let cpuUsedPct = Number.isFinite(cpuFrac) ? cpuFrac*100.0 : 0;
+  if(cpuUsedPct < 0) cpuUsedPct = 0;
+  if(cpuUsedPct > 100) cpuUsedPct = 100;
+  const cpuIdlePct = 100 - cpuUsedPct;
+
+  cpuGauge.data.datasets[0].data = [cpuUsedPct, cpuIdlePct];
+  cpuGauge.update('none');
+
+  $('#lblCpuUsed').textContent = Number.isFinite(cpuFrac) ? cpuUsedPct.toFixed(1) + ' %' : '–';
+  $('#lblCpuIdle').textContent = Number.isFinite(cpuFrac) ? cpuIdlePct.toFixed(1) + ' %' : '–';
+
+  const heap = stat.heap || {};
+  const intTotal = Number(heap.int_total);
+  let intUsed   = Number(heap.int_used);
+  if(!Number.isFinite(intUsed) && Number.isFinite(intTotal) && Number.isFinite(heap.int_free)){
+    intUsed = intTotal - heap.int_free;
+  }
+
+  let heapFrac = NaN;
+  if(Number.isFinite(intTotal) && intTotal > 0 && Number.isFinite(intUsed)){
+    heapFrac = intUsed / intTotal;
+  }
+
+  let heapUsedPct = Number.isFinite(heapFrac) ? heapFrac*100.0 : 0;
+  if(heapUsedPct < 0) heapUsedPct = 0;
+  if(heapUsedPct > 100) heapUsedPct = 100;
+  const heapFreePct = 100 - heapUsedPct;
+
+  heapGauge.data.datasets[0].data = [heapUsedPct, heapFreePct];
+  heapGauge.update('none');
+
+  $('#lblHeapUsed').textContent = Number.isFinite(intUsed) ? fmtBytes(intUsed) : '–';
+  if(Number.isFinite(intTotal) && Number.isFinite(intUsed)){
+    $('#lblHeapFree').textContent = fmtBytes(intTotal - intUsed);
+  }else{
+    $('#lblHeapFree').textContent = '–';
+  }
+}
+
 function updateLinkPills(stat){
   const link = stat.link || {};
-  setPill($('#pillBle'), link.ble_up ? 'ok' : 'err',
-          link.ble_up ? 'BLE: élő kapcsolat' : 'BLE: nincs kapcsolat');
+  setPill($('#pillBle'), link.ble_up ? 'ok' : 'warn',
+          link.ble_up ? 'BLE: élő kapcsolat' : 'BLE: ismeretlen');
 
-  setPill($('#pillEth'), link.eth_up ? 'ok' : 'err',
-          link.eth_up ? 'ETH: élő kapcsolat' : 'ETH: nincs IP / link');
+  setPill($('#pillEth'), link.eth_up ? 'ok' : 'warn',
+          link.eth_up ? 'ETH: élő kapcsolat' : 'ETH: ismeretlen');
 
   setPill($('#pillMain'), link.main_up ? 'ok' : 'warn',
-          link.main_up ? 'Fő szerver: elérhető' : 'Fő szerver: nem elérhető');
+          link.main_up ? 'Fő szerver: elérhető' : 'Fő szerver: ismeretlen');
 }
 
 function updateLastTables(stat){
@@ -811,40 +841,6 @@ function updateLastTables(stat){
 
   if(tbBle) tbBle.innerHTML = lastBle.map(makeRowBle).join('');
   if(tbEth) tbEth.innerHTML = lastEth.map(makeRowEth).join('');
-}
-
-// CPU + memória donut frissítés
-function updateCpuMemGauges(stat){
-  const cpuLoad = stat.cpu?.load;
-  const heap    = stat.heap || {};
-
-  // CPU: 0..1 → %
-  if (cpuGauge && Number.isFinite(cpuLoad)) {
-    const usedPct = Math.max(0, Math.min(100, cpuLoad * 100));
-    cpuGauge.data.datasets[0].data = [usedPct, 100 - usedPct];
-    cpuGauge.update('none');
-  }
-
-  // Heap donut – int_total / int_used mezők preferáltak
-  let intTotal = heap.int_total;
-  let intUsed  = heap.int_used;
-
-  if (!Number.isFinite(intTotal) || intTotal <= 0) {
-    const free = heap.free;
-    if (Number.isFinite(free) && Number.isFinite(intUsed)) {
-      intTotal = free + intUsed;
-    }
-  }
-
-  if (!Number.isFinite(intUsed) && Number.isFinite(heap.free) && Number.isFinite(intTotal)) {
-    intUsed = Math.max(0, intTotal - heap.free);
-  }
-
-  if (heapGauge && Number.isFinite(intTotal) && intTotal > 0 && Number.isFinite(intUsed)) {
-    const usedPct = Math.max(0, Math.min(100, (intUsed / intTotal) * 100));
-    heapGauge.data.datasets[0].data = [usedPct, 100 - usedPct];
-    heapGauge.update('none');
-  }
 }
 
 // ===== /api/stats lekérés =====
@@ -901,7 +897,6 @@ window.addEventListener('DOMContentLoaded', () => {
       if (window.history.length > 1) {
         window.history.back();
       } else {
-        // ha nincs előzmény, menjen vissza a konfigurációs oldalra
         window.location.href = this.getAttribute('href') || '/super';
       }
     });
