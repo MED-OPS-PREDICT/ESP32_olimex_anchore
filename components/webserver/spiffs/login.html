@@ -78,7 +78,8 @@
 </head>
 <body>
   <div class="wrap">
-    <div class="card">
+    <!-- Enter a jelszó / user mezőkben: form submit → login() -->
+    <form class="card" onsubmit="event.preventDefault(); login();">
       <div class="head">
         <div class="icon">
           <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -87,44 +88,40 @@
         </div>
         <div>
           <h2>Belépés</h2>
-          <div class="sub">Váró 1 IPS zóna master.</div>
+          <!-- Alcím: ZONE_NAME – DEVICE_NAME anchore -->
+          <div class="sub" id="subtitle">IPS zóna – eszköz anchore</div>
         </div>
       </div>
 
-      <!-- FORM: enter a két mezőben is submit-el -->
-      <form id="loginForm" onsubmit="return login(event)">
-        <div class="row">
-          <div class="col">
-            <label for="user">Felhasználónév</label>
-            <input id="user" type="text" autocomplete="username" placeholder="pl. admin">
+      <div class="row">
+        <div class="col">
+          <label for="user">Felhasználónév</label>
+          <input id="user" type="text" autocomplete="username" placeholder="pl. admin">
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="col">
+          <label for="pwd">Jelszó</label>
+          <div class="pwd">
+            <input id="pwd" type="password" autocomplete="current-password" placeholder="••••••••">
+            <button id="pwdToggle" class="toggle" type="button" aria-label="Jelszó megjelenítése" onclick="togglePwd()">
+              <svg id="eyeIcon" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 5C7 5 2.73 8.11 1 12c1.73 3.89 6 7 11 7s9.27-3.11 11-7c-1.73-3.89-6-7-11-7Z"/>
+                <circle cx="12" cy="12" r="2.5"/>
+              </svg>
+            </button>
           </div>
         </div>
+      </div>
 
-        <div class="col pwd">
-          <label for="pwd">Jelszó</label>
-          <input id="pwd" type="password" autocomplete="current-password" placeholder="••••••••">
-          <!-- szem ikon a mező jobb szélén, abszolút pozicionálva -->
-          <button id="pwdToggle"
-                  class="toggle"
-                  type="button"
-                  aria-label="Jelszó megjelenítése"
-                  onclick="togglePwd()">
-            <svg id="eyeIcon" viewBox="0 0 24 24" fill="currentColor">
-              <path id="eyeMain"
-                    d="M12 5C7 5 2.73 8.11 1 12c1.73 3.89 6 7 11 7s9.27-3.11 11-7c-1.73-3.89-6-7-11-7Z"/>
-              <circle id="eyePupil" cx="12" cy="12" r="2.5"></circle>
-            </svg>
-          </button>
-        </div>
-
-        <button class="btn" type="submit">Belépés</button>
-      </form>
+      <button class="btn" type="submit">Belépés</button>
 
       <div style="margin-top:10px;border-top:1px solid rgba(255,255,255,.06);padding-top:10px">
-        <div class="sub" style="margin:0 0 6px">Anchor állapotok</div>
+        <div class="sub" style="margin:0 0 6px">Eszköz állapot</div>
         <table>
           <tr>
-            <th>Anchor</th>
+            <th>Státusz</th>
             <th>ID</th>
             <th>Utolsó mérés [s]</th>
             <th>Feszültség [V]</th>
@@ -136,30 +133,42 @@
       </div>
 
       <div class="foot" id="msg"></div>
-    </div>
+    </form>
   </div>
 
 <script>
 function togglePwd(){
   const inp = document.getElementById('pwd');
   const eye = document.getElementById('eyeIcon');
-  const mainPath = document.getElementById('eyeMain');
-  const pupil = document.getElementById('eyePupil');
-
   if (inp.type === 'password') {
     inp.type = 'text';
-    // „áthúzott” szem – egyszerűen elforgatott vonal
     eye.innerHTML = `
-      <path d="M12 5C7 5 2.73 8.11 1 12c1.73 3.89 6 7 11 7s9.27-3.11 11-7c-1.73-3.89-6-7-11-7Z"></path>
-      <circle cx="12" cy="12" r="2.5"></circle>
-      <line x1="4" y1="4" x2="20" y2="20" stroke="currentColor" stroke-width="2" />
+      <path d="M12 5C7 5 2.73 8.11 1 12c1.73 3.89 6 7 11 7s9.27-3.11 11-7c-1.73-3.89-6-7-11-7Z"/>
+      <circle cx="12" cy="12" r="2.5"/>
+      <line x1="3" y1="3" x2="21" y2="21" stroke="currentColor" stroke-width="2"/>
     `;
   } else {
     inp.type = 'password';
     eye.innerHTML = `
-      <path d="M12 5C7 5 2.73 8.11 1 12c1.73 3.89 6 7 11 7s9.27-3.11 11-7c-1.73-3.89-6-7-11-7Z"></path>
-      <circle cx="12" cy="12" r="2.5"></circle>
+      <path d="M12 5C7 5 2.73 8.11 1 12c1.73 3.89 6 7 11 7s9.27-3.11 11-7c-1.73-3.89-6-7-11-7Z"/>
+      <circle cx="12" cy="12" r="2.5"/>
     `;
+  }
+}
+
+async function loadMeta(){
+  try{
+    const r = await fetch('/api/config', {cache:'no-store'});
+    if(!r.ok) throw 0;
+    const c = await r.json();
+
+    const z = (c.ZONE_NAME || "").trim() || "Ismeretlen zóna";
+    const d = (c.DEVICE_NAME || "").trim() || "Ismeretlen eszköz";
+
+    // pl.: "Rendelő – ANCH_1_1 anchore"
+    document.getElementById('subtitle').textContent = `${z} – ${d} anchore`;
+  }catch(e){
+    document.getElementById('subtitle').textContent = "IPS zóna – eszköz anchore";
   }
 }
 
@@ -167,12 +176,16 @@ async function loadStatus(){
   try{
     const r = await fetch('/api/status',{cache:'no-store'});
     if(!r.ok) throw 0;
-    const s = await r.json(); // {anchor,id,last_s,last_v,state}
-    const cls = s.state === 'ok' ? 'ok' : (s.state === 'warn' ? 'warn' : 'off');
+    const s = await r.json();
+    // Nem kényes státuszinformáció: hb_text + szint
+    const level = s.hb_level || s.state || "warn";
+    const cls = level === 'ok' ? 'ok' : (level === 'warn' ? 'warn' : 'off');
+    const text = s.hb_text || "Állapotadat nem érhető el";
+
     document.getElementById('status-body').innerHTML =
       `<tr>
-         <td><span class="dot ${cls}"></span>${s.anchor}</td>
-         <td>${s.id}</td>
+         <td><span class="dot ${cls}"></span>${text}</td>
+         <td>${typeof s.id === 'number' ? s.id : '-'}</td>
          <td>${Number.isFinite(s.last_s)?s.last_s.toFixed(2):'-'}</td>
          <td>${Number.isFinite(s.last_v)?s.last_v.toFixed(2):'-'}</td>
        </tr>`;
@@ -182,13 +195,11 @@ async function loadStatus(){
   }
 }
 
-async function login(ev){
-  if (ev) ev.preventDefault();   // enter / submit ne töltsön újra
+async function login(){
   const user = document.getElementById('user').value.trim();
   const pass = document.getElementById('pwd').value;
-  const msg  = document.getElementById('msg');
+  const msg = document.getElementById('msg');
   msg.textContent = '';
-
   try{
     const r = await fetch('/auth/login', {
       method:'POST',
@@ -196,19 +207,20 @@ async function login(ev){
       body: JSON.stringify({user, pass})
     });
     if(!r.ok){
-      msg.textContent = 'Hibás felhasználónév vagy jelszó.';
-      return false;
+      msg.textContent='Hibás felhasználónév vagy jelszó.';
+      return;
     }
+    // sikeres login → super_user
     window.location.href = '/super_user.html';
-    return false;
   }catch(e){
-    msg.textContent = 'Hálózati hiba.';
-    return false;
+    msg.textContent='Hálózati hiba.';
   }
 }
 
+// induláskor meta + státusz
+loadMeta();
 loadStatus();
-setInterval(loadStatus, 4000);
+setInterval(loadStatus,4000);
 </script>
 </body>
-
+</html>
