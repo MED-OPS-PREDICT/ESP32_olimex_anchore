@@ -740,9 +740,25 @@ window.addEventListener('DOMContentLoaded', () => {
 
   $('#btnRefreshOnce')?.addEventListener('click', fetchStatsOnce);
 
+  // <<< EZT ADD HOZZÁ
+  const backBtn = document.getElementById('btnBack');
+  if (backBtn) {
+    backBtn.addEventListener('click', function (e) {
+      e.preventDefault();
+      if (window.history.length > 1) {
+        window.history.back();
+      } else {
+        // ha nincs előzmény, menjen vissza a konfigurációs oldalra
+        window.location.href = this.getAttribute('href') || '/super';
+      }
+    });
+  }
+  // <<< IDÁIG
+
   fetchStatsOnce();   // induláskor egy azonnali lekérés
   startPolling();     // majd periodikus frissítés
 });
+
 </script>
 </body>
 </html>
