@@ -189,8 +189,11 @@ static esp_err_t ble_get  (httpd_req_t* r){ if(!require_role(r,ROLE_BLE ))return
 static esp_err_t admin_get(httpd_req_t* r){ if(!require_role(r,ROLE_ROOT))return ESP_FAIL; return send_file(r,"/spiffs/admin.html","text/html"); }
 static esp_err_t super_user_get(httpd_req_t* r){ if(!require_role(r,ROLE_BLE))return ESP_FAIL; return send_file(r,"/spiffs/super_user.html","text/html"); }
 
-static esp_err_t super_tooltips_get(httpd_req_t* r){
-    if (!require_role(r, ROLE_BLE)) return ESP_FAIL;
+static esp_err_t super_tooltips_get(httpd_req_t *r)
+{
+    if (!require_role(r, ROLE_BLE)) {
+        return ESP_FAIL;   // ugyanaz a minta, mint diag_get / stats_get stb.
+    }
     return send_file(r, "/spiffs/super_tooltips.js", "application/javascript");
 }
 
@@ -889,10 +892,6 @@ esp_err_t webserver_start(){
     // BLE bridge
     ble_http_bridge_init();
     http_register_routes(s_http);   // /api/dwm_get
-
-    // ÚJ: statisztika modul
-    web_stats_init();
-    web_stats_register_handlers(s_http);
 
     // Pages
     httpd_uri_t u{};

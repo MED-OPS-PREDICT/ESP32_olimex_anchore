@@ -9,4 +9,4 @@ idf_component_register(
   REQUIRES esp_http_server nvs_flash esp_netif spiffs mbedtls esp_timer json
 )
 
-spiffs_create_partition_image(spiffs spiffs FLASH_IN_PROJECT)
+spiffs_create_partition_image(storage spiffs FLASH_IN_PROJECT)
