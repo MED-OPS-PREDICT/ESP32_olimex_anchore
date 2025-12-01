@@ -189,6 +189,11 @@ static esp_err_t ble_get  (httpd_req_t* r){ if(!require_role(r,ROLE_BLE ))return
 static esp_err_t admin_get(httpd_req_t* r){ if(!require_role(r,ROLE_ROOT))return ESP_FAIL; return send_file(r,"/spiffs/admin.html","text/html"); }
 static esp_err_t super_user_get(httpd_req_t* r){ if(!require_role(r,ROLE_BLE))return ESP_FAIL; return send_file(r,"/spiffs/super_user.html","text/html"); }
 
+static esp_err_t super_tooltips_get(httpd_req_t* r){
+    if (!require_role(r, ROLE_BLE)) return ESP_FAIL;
+    return send_file(r, "/spiffs/super_tooltips.js", "application/javascript");
+}
+
 /* ================= /auth/login ================= */
 static esp_err_t auth_login_post(httpd_req_t* req){
     add_cors(req);
@@ -941,6 +946,22 @@ esp_err_t webserver_start(){
         .user_ctx = NULL
     };
     httpd_register_uri_handler(s_http, &uri_reboot);
+
+    httpd_uri_t super_uri = {
+        .uri      = "/super",
+        .method   = HTTP_GET,
+        .handler  = super_user_get,
+        .user_ctx = nullptr
+    };
+    httpd_register_uri_handler(s_http, &super_uri);
+
+    httpd_uri_t super_tooltips_uri = {
+        .uri      = "/super_tooltips.js",
+        .method   = HTTP_GET,
+        .handler  = super_tooltips_get,
+        .user_ctx = nullptr
+    };
+    httpd_register_uri_handler(s_http, &super_tooltips_uri);
 
     web_stats_init();
     web_stats_register_handlers(s_http);

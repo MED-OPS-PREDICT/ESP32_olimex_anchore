@@ -1,75 +1,76 @@
-// super_tooltips.js
-// Minden tooltip szöveg egy helyen
+// /spiffs/super_tooltips.js
+// NINCS <script> TAG, CSAK JS!
 
 window.SUPER_TOOLTIPS = {
-  // fix mezők (header alatti inputok) – id alapján
-  inputs: {
-    svcUuid:  'BLE szolgáltatás UUID-je, amit az anchor hirdet.',
-    cfgUuid:  'Konfigurációs karakterisztika UUID – ezen keresztül megy a CFG GET/SET.',
-    dataUuid: 'Adat karakterisztika UUID – mérési / adat csatorna.',
-    reqId:    'Kérések azonosítója (uint16). BEÁLLÍT és LEKÉR műveletekhez használja a firmware.'
+  keys: {
+    NETWORK_ID: "UWB hálózati azonosító. Minden anchoron azonos legyen.",
+    ZONE_ID:    "Zóna azonosító (hex, pl. 0x1234). Ugyanaz a zónában lévő anchornál.",
+    ANCHOR_ID:  "Anchor egyedi azonosító (32 bites hex).",
+    HB_MS:      "Heartbeat periódus ezredmásodpercben.",
+    LOG_LEVEL:  "Logolási szint (0..n).",
+    TX_ANT_DLY: "Adó antenna késleltetés (tick / ps), kalibrációs érték.",
+    RX_ANT_DLY: "Vevő antenna késleltetés (tick / ps), kalibrációs érték.",
+    BIAS_TICKS: "Mérési bias kompenzáció (tick).",
+    PHY_CH:     "UWB csatorna (pl. 5, 9).",
+    PHY_SFDTO:  "SFD timeout (sym).",
+
+    // IPS csoport
+    ZONE_NAME:   "Zóna megnevezése (UI-ban jelenik meg).",
+    DEVICE_NAME: "Eszköz neve (pl. ANCHOR_01).",
+    DEVICE_DESC: "Rövid leírás, helyszín, megjegyzés.",
+
+    ETH_MODE: "0 = DHCP, 1 = statikus IP.",
+    ETH_IP:   "Saját IP cím.",
+    ETH_MASK: "Hálózati maszk.",
+    ETH_GW:   "Alapértelmezett gateway.",
+
+    GW_ID: "Gateway ID, IPS konfigurációból.",
+
+    AES_KEY: "AES titkosító kulcs hex formában (32 byte = 64 hex karakter).",
+
+    ZONE_CTRL_IP:   "Zóna vezérlő IP címe.",
+    ZONE_CTRL_PORT: "Zóna vezérlő UDP/TCP port.",
+    ZONE_CTRL_EN:   "Zóna vezérlő engedélyezése (0/1).",
+
+    MAIN_IP:   "Fő szerver IP címe.",
+    MAIN_PORT: "Fő szerver port.",
+    MAIN_EN:   "Fő szerver engedélyezése (0/1).",
+
+    SERVICE_IP:   "Service / menedzsment szerver IP.",
+    SERVICE_PORT: "Service szerver port.",
+    SERVICE_EN:   "Service szerver engedélyezése (0/1).",
+
+    // sync
+    PPM_MAX:     "Maximális frekvenciaeltérés ppm-ben.",
+    JUMP_PPM:    "Ugrásérzékelés küszöb ppm-ben.",
+    AB_GAP_MS:   "A-B szinkron ablak ms-ben.",
+    MS_EWMA_DEN: "Mester-szolga szűrés EWMA nevező.",
+    TK_EWMA_DEN: "Time-keeping szűrés EWMA nevező.",
+    TK_MIN_MS:   "Időkövetés minimális periódus (ms).",
+    TK_MAX_MS:   "Időkövetés maximális periódus (ms).",
+    DTTX_MIN_MS: "TX időköz minimum (ms).",
+    DTTX_MAX_MS: "TX időköz maximum (ms).",
+    LOCK_NEED:   "Lockhoz szükséges csomagszám / feltétel.",
+
+    // PHY
+    PHY_PLEN:     "Preamble hossz.",
+    PHY_PAC:      "PAC érték.",
+    PHY_TX_CODE:  "TX kód index.",
+    PHY_RX_CODE:  "RX kód index.",
+    PHY_SFD:      "SFD beállítás.",
+    PHY_BR:       "Bitráta.",
+    PHY_PHRMODE:  "PHR mód.",
+    PHY_PHRRATE:  "PHR bitráta.",
+    PHY_STS_MODE: "STS mód.",
+    PHY_STS_LEN:  "STS hossz.",
+    PHY_PDOA:     "PDOA mód."
   },
 
-  // konfigurációs kulcsok – GROUPS.*.k szerint
-  keys: {
-    // base (ESP + DWM)
-    NETWORK_ID: 'UWB hálózat azonosító. Csak az azonos NETWORK_ID-jű eszközök kommunikálnak.',
-    ZONE_ID:    'Logikai zóna azonosító. Hex formában: pl. 0x0001.',
-    ANCHOR_ID:  'Anchor egyedi azonosítója a zónán belül.',
-    HB_MS:      'Anchor heartbeat periódus milliszekundumban.',
-    LOG_LEVEL:  'Firmware logolási szintje (minél nagyobb, annál részletesebb).',
-    TX_ANT_DLY: 'Adó antenna késleltetés (kalibrációs érték, tick egység).',
-    RX_ANT_DLY: 'Vevő antenna késleltetés (kalibrációs érték, tick egység).',
-    BIAS_TICKS: 'Bias korrekció ticks egységben (távolság-kompenzáció).',
-    PHY_CH:     'Rádiócsatorna (UWB channel).',
-    PHY_SFDTO:  'SFD timeout beállítás (időzítés, hibadetektálás).',
-
-    // ips (ESP only)
-    ZONE_NAME:   'Zóna emberi olvasású neve (pl. Raktár 1).',
-    DEVICE_NAME: 'Eszköz neve, ami a felsőbb rendszerekben is megjelenik.',
-    DEVICE_DESC: 'Rövid leírás / megjegyzés az eszközről.',
-    ETH_MODE:    'Ethernet mód: 0 = DHCP, 1 = statikus IP.',
-    ETH_IP:      'ESP statikus IP címe (ha ETH_MODE = 1).',
-    ETH_MASK:    'Alhálózati maszk (pl. 255.255.255.0).',
-    ETH_GW:      'Alapértelmezett gateway IP címe.',
-    GW_ID:       'Gateway azonosító (felsőbb rendszerhez).',
-    AES_KEY:     'AES kulcs 32 byte hex formában (64 hex karakter).',
-
-    ZONE_CTRL_IP:   'Zóna vezérlő IP címe.',
-    ZONE_CTRL_PORT: 'Zóna vezérlő TCP/UDP portja.',
-    ZONE_CTRL_EN:   'Zóna vezérlő engedélyezése (0 = tiltva, 1 = engedélyezve).',
-
-    MAIN_IP:    'Fő szerver IP címe.',
-    MAIN_PORT:  'Fő szerver TCP/UDP portja.',
-    MAIN_EN:    'Fő szerver engedélyezése (0 = tiltva, 1 = engedélyezve).',
-
-    SERVICE_IP:   'Service / karbantartó szolgáltatás IP címe.',
-    SERVICE_PORT: 'Service port.',
-    SERVICE_EN:   'Service engedélyezése (0 = tiltva, 1 = engedélyezve).',
-
-    // sync (DWM)
-    PPM_MAX:     'Megengedett maximális óraeltérés (ppm).',
-    JUMP_PPM:    'Nagyobb óraugrás detektálási küszöb (ppm).',
-    AB_GAP_MS:   'A/B anchor közötti időrés (ms).',
-    MS_EWMA_DEN: 'Master-slave szinkron EWMA szűrő nevező.',
-    TK_EWMA_DEN: 'Timekeeping EWMA szűrő nevező.',
-    TK_MIN_MS:   'Időbélyeg frissítés minimális periódusa (ms).',
-    TK_MAX_MS:   'Időbélyeg frissítés maximális periódusa (ms).',
-    DTTX_MIN_MS: 'Minimális TX időköz (ms).',
-    DTTX_MAX_MS: 'Maximális TX időköz (ms).',
-    LOCK_NEED:   'Szinkron “lock” eléréséhez szükséges jó minták száma.',
-
-    // phy (DWM)
-    PHY_PLEN:     'Preamble hossz (sym).',
-    PHY_PAC:      'PAC méret (preamble acquisition chunk).',
-    PHY_TX_CODE:  'TX preamble kód.',
-    PHY_RX_CODE:  'RX preamble kód.',
-    PHY_SFD:      'SFD mód / minta.',
-    PHY_BR:       'Adatsebesség (bitrate).',
-    PHY_PHRMODE:  'PHR mód (frame header).',
-    PHY_PHRRATE:  'PHR bitsebesség.',
-    PHY_STS_MODE: 'STS (Secure Time Stamp) mód.',
-    PHY_STS_LEN:  'STS hossz.',
-    PHY_PDOA:     'PDOA konfiguráció (irány meghatározás).'
+  // fix input mezők ID alapján
+  inputs: {
+    svcUuid:   "BLE szolgáltatás UUID (GATT service).",
+    cfgUuid:   "Konfigurációs karakterisztika UUID.",
+    dataUuid:  "Adat karakterisztika UUID.",
+    reqId:     "Kérés azonosító (tetszőleges, a válaszban visszajön)."
   }
 };
