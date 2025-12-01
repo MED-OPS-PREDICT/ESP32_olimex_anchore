@@ -17,6 +17,7 @@
 #include "ble_logger.h"
 #include "ethernet_sender/ble_logger.h"
 #include "aes_sender.h"
+#include "web_stats.h"
 
 static const char *TAG = "main";
 
@@ -127,6 +128,7 @@ void app_main(void)
 
     vTaskDelay(pdMS_TO_TICKS(500));
     fs_mount();
+    web_stats_init();
     webserver_start();
 
     /* BLE: opcionális name filter, pl. "UWB_ANCHOR_01" */
