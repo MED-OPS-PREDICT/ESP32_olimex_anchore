@@ -225,10 +225,6 @@ static esp_err_t web_stats_api(httpd_req_t *req)
     return httpd_resp_send(req, buf, n);
 }
 
-    httpd_resp_set_type(req, "application/json");
-    return httpd_resp_send(req, buf, n);
-}
-
 /* csak /api/stats-ot regisztráljuk – /stats HTML már megvan máshol */
 void web_stats_register_handlers(httpd_handle_t h)
 {
