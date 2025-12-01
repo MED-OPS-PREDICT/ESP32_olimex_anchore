@@ -225,6 +225,55 @@
     overflow-x:auto;
   }
 
+  /* ===== csúszó kapcsoló az ENG mezőkhöz ===== */
+    .toggle-wrap{
+      display:inline-flex;
+      align-items:center;
+      gap:6px;
+    }
+
+    .switch{
+      position:relative;
+      display:inline-block;
+      width:40px;
+      height:20px;
+    }
+
+    .switch input{
+      opacity:0;
+      width:0;
+      height:0;
+    }
+
+    .slider{
+      position:absolute;
+      cursor:pointer;
+      inset:0;
+      background:rgba(255,255,255,.18);
+      border-radius:999px;
+      transition:.2s;
+    }
+
+    .slider:before{
+      position:absolute;
+      content:"";
+      height:16px;
+      width:16px;
+      left:2px;
+      top:2px;
+      background:#000;
+      border-radius:50%;
+      transition:.2s;
+    }
+
+    .switch input:checked + .slider{
+      background:var(--ok);
+    }
+
+    .switch input:checked + .slider:before{
+      transform:translateX(20px);
+    }
+
   table{
     width:100%;
     border-collapse:collapse;
@@ -685,9 +734,28 @@ function renderGroup(tblId, items, cfg){
 
     const inputAttrs = inputTip ? ` title="${inputTip}"` : '';
 
-    const input = it.edit
-      ? `<input class="inp mono" id="in_${key}" placeholder="${placeholder}"${inputAttrs}>`
-      : `<input class="inp" id="in_${key}" placeholder="nem írható" disabled${inputAttrs}>`;
+    let input;
+    const isEnableToggle =
+      key === 'ZONE_CTRL_EN' ||
+      key === 'MAIN_EN'     ||
+      key === 'SERVICE_EN';
+
+    if (it.edit && isEnableToggle) {
+      // alap állapot: engedélyezett-e az ESP config szerint
+      const on = (g.esp && (g.esp[key] === 1 || g.esp[key] === '1' || g.esp[key] === true));
+      input = `
+        <div class="toggle-wrap"${inputAttrs}>
+          <label class="switch">
+            <input type="checkbox" id="in_${key}" ${on ? 'checked' : ''}>
+            <span class="slider"></span>
+          </label>
+          <span class="muted mono" id="lbl_${key}">${on ? 'engedélyezve' : 'tiltva'}</span>
+        </div>`;
+    } else if (it.edit) {
+      input = `<input class="inp mono" id="in_${key}" placeholder="${placeholder}"${inputAttrs}>`;
+    } else {
+      input = `<input class="inp" id="in_${key}" placeholder="nem írható" disabled${inputAttrs}>`;
+    }
 
     const cells = [];
     cells.push(`<td>${labelHtml}</td>`);
@@ -794,8 +862,15 @@ function gatherInputs(){
       if (!it.k) continue;
       const el = $('in_'+it.k);
       if(!el || el.disabled) continue;
-      let v = el.value.trim();
-      if(v === '') continue;
+      let v;
+
+      if (el.type === 'checkbox') {
+        // csúszó kapcsoló – mindig küldünk 0/1-et
+        v = el.checked ? '1' : '0';
+      } else {
+        v = el.value.trim();
+        if (v === '') continue;  // üres mező nem küldődik
+      }
 
         if (it.k === 'ZONE_ID') {
           // ha nem 0x-szel kezdődik, próbáljuk decimálisból konvertálni

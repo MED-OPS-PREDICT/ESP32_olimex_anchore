@@ -935,9 +935,6 @@ esp_err_t webserver_start(){
     opt.uri="/api/dwm_last";  httpd_register_uri_handler(s_http,&opt);   // ÚJ
 
     // Root és catch-all → login
-    httpd_uri_t root{}; root.method=HTTP_GET; root.uri="/";  root.handler=login_get; httpd_register_uri_handler(s_http,&root);
-    httpd_uri_t any{};  any .method=HTTP_GET; any .uri="/*"; any .handler=login_get; httpd_register_uri_handler(s_http,&any);
-
     httpd_uri_t uri_reboot = {
         .uri      = "/api/reboot",
         .method   = HTTP_POST,
@@ -946,6 +943,7 @@ esp_err_t webserver_start(){
     };
     httpd_register_uri_handler(s_http, &uri_reboot);
 
+    // Super user page
     httpd_uri_t super_uri = {
         .uri      = "/super",
         .method   = HTTP_GET,
@@ -954,6 +952,7 @@ esp_err_t webserver_start(){
     };
     httpd_register_uri_handler(s_http, &super_uri);
 
+    // Tooltipek JS
     httpd_uri_t super_tooltips_uri = {
         .uri      = "/super_tooltips.js",
         .method   = HTTP_GET,
@@ -961,6 +960,20 @@ esp_err_t webserver_start(){
         .user_ctx = nullptr
     };
     httpd_register_uri_handler(s_http, &super_tooltips_uri);
+
+    // Root és catch-all → login  **LEGUTOLSÓNAK**
+    httpd_uri_t root{};
+    root.method  = HTTP_GET;
+    root.uri     = "/";
+    root.handler = login_get;
+    httpd_register_uri_handler(s_http, &root);
+
+    httpd_uri_t any{};
+    any.method  = HTTP_GET;
+    any.uri     = "/*";
+    any.handler = login_get;
+    httpd_register_uri_handler(s_http, &any);
+
 
     web_stats_init();
     web_stats_register_handlers(s_http);
