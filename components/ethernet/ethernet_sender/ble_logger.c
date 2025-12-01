@@ -12,6 +12,7 @@
 #include "aes_sender.h"
 #include "error_code_decoding.h"
 #include "web_stats.h"
+#include "esp_timer.h"
 
 static const char *TAG_UWB = "UWB_DATA";
 
@@ -39,6 +40,73 @@ typedef struct {
 
 static kpi_counter_t g_ble_kpi;
 static kpi_counter_t g_eth_kpi;
+
+static void kpi_inc_rx(kpi_counter_t *k)
+{
+    uint64_t now_ms = esp_timer_get_time() / 1000ULL;
+
+    if (k->last_ts_ms == 0) {
+        k->last_ts_ms = now_ms;
+    }
+
+    k->rx_total++;
+    k->rx_since_last++;
+}
+
+void ble_logger_on_ble_packet(void)
+{
+    kpi_inc_rx(&g_ble_kpi);
+}
+
+void ble_logger_on_eth_packet(void)
+{
+    kpi_inc_rx(&g_eth_kpi);
+}
+
+void ble_logger_get_kpi(ble_eth_kpi_t *ble, ble_eth_kpi_t *eth)
+{
+    uint64_t now_ms = esp_timer_get_time() / 1000ULL;
+
+    if (ble) {
+        uint64_t dt_ms = (g_ble_kpi.last_ts_ms > 0) ? (now_ms - g_ble_kpi.last_ts_ms) : 0;
+        double   sec   = (dt_ms > 0) ? ((double)dt_ms / 1000.0) : 0.0;
+        double   rx_r  = (sec > 0.0 && g_ble_kpi.rx_since_last > 0)
+                         ? ((double)g_ble_kpi.rx_since_last / sec) : 0.0;
+        double   err_r = (sec > 0.0 && g_ble_kpi.err_since_last > 0)
+                         ? ((double)g_ble_kpi.err_since_last / sec) : 0.0;
+
+        ble->rx_total = g_ble_kpi.rx_total;
+        ble->tx_total = g_ble_kpi.tx_total;
+        ble->err_total = g_ble_kpi.err_total;
+        ble->rx_rate  = rx_r;
+        ble->tx_rate  = 0.0;        // később bővíthető
+        ble->err_rate = err_r;
+
+        g_ble_kpi.rx_since_last  = 0;
+        g_ble_kpi.err_since_last = 0;
+        g_ble_kpi.last_ts_ms     = now_ms;
+    }
+
+    if (eth) {
+        uint64_t dt_ms = (g_eth_kpi.last_ts_ms > 0) ? (now_ms - g_eth_kpi.last_ts_ms) : 0;
+        double   sec   = (dt_ms > 0) ? ((double)dt_ms / 1000.0) : 0.0;
+        double   rx_r  = (sec > 0.0 && g_eth_kpi.rx_since_last > 0)
+                         ? ((double)g_eth_kpi.rx_since_last / sec) : 0.0;
+        double   err_r = (sec > 0.0 && g_eth_kpi.err_since_last > 0)
+                         ? ((double)g_eth_kpi.err_since_last / sec) : 0.0;
+
+        eth->rx_total = g_eth_kpi.rx_total;
+        eth->tx_total = g_eth_kpi.tx_total;
+        eth->err_total = g_eth_kpi.err_total;
+        eth->rx_rate  = rx_r;
+        eth->tx_rate  = 0.0;
+        eth->err_rate = err_r;
+
+        g_eth_kpi.rx_since_last  = 0;
+        g_eth_kpi.err_since_last = 0;
+        g_eth_kpi.last_ts_ms     = now_ms;
+    }
+}
 
 // forward deklaráció (prototípus)
 void send_uwb_udp(const uint8_t *data, size_t len);
@@ -95,6 +163,9 @@ void uwb_notify_cb(const uint8_t *data, uint16_t len, bool from_cfg)
         }
         return;
     }
+
+    // Minden nem-CFG csomag: BLE KPI növelése
+    ble_logger_on_ble_packet();
 
     /* ================= RÉGI 0xAB PREFIXES UWB PACKET ================= */
     if (len == sizeof(UWBPacket)) {

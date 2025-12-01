@@ -10,6 +10,7 @@
 #include "esp_chip_info.h"
 #include "esp_flash.h"
 #include "esp_freertos_hooks.h"
+#include "ble_logger.h"
 
 #include <math.h>
 #include <inttypes.h>
@@ -189,6 +190,10 @@ static esp_err_t web_stats_api(httpd_req_t *req)
     uint32_t ps_used  = (uint32_t)((ps_total > ps_free) ? (ps_total - ps_free) : 0);
 
     double loadF = (double)load;  // 0..1, ezt várja a frontend stat.cpu.load-ként
+    // BLE / ETH KPI-k a ble_logger-ből
+    ble_eth_kpi_t ble_kpi = {0};
+    ble_eth_kpi_t eth_kpi = {0};
+    ble_logger_get_kpi(&ble_kpi, &eth_kpi);
 
     // --- BLE/ETH rate + hibaarány számítás ---
     uint64_t now_ms = (uint64_t)(esp_timer_get_time() / 1000ULL);
@@ -294,19 +299,20 @@ static esp_err_t web_stats_api(httpd_req_t *req)
         (uint32_t)ps_free,
         (uint32_t)ps_total,
         ps_used,
-        ble_rx_rate,
-        0.0,
-        ble_err_rate,
-        g_ble_stats.rx_total,
-        g_ble_stats.tx_total,
-        g_ble_stats.err_total,
-        eth_rx_rate,
-        0.0,
-        eth_err_rate,
-        g_eth_stats.rx_total,
-        g_eth_stats.tx_total,
-        g_eth_stats.err_total
-
+        // BLE KPI
+        ble_kpi.rx_rate,
+        ble_kpi.tx_rate,
+        ble_kpi.err_rate,
+        ble_kpi.rx_total,
+        ble_kpi.tx_total,
+        ble_kpi.err_total,
+        // ETH KPI
+        eth_kpi.rx_rate,
+        eth_kpi.tx_rate,
+        eth_kpi.err_rate,
+        eth_kpi.rx_total,
+        eth_kpi.tx_total,
+        eth_kpi.err_total
     );
 
     if (n < 0) {

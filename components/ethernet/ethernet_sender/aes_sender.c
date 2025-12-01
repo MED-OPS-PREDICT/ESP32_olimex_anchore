@@ -14,6 +14,7 @@
 #include "aes_sender.h"
 
 #include "esp_netif.h"
+#include "ble_logger.h"
 
 static const char *TAG = "AES_SENDER";
 
@@ -163,6 +164,12 @@ void aes_sender_send_line(const char *line)
         if (!IPS.dest[i].enabled) continue;
 
         struct sockaddr_in sa = { 0 };
+        // KPI: minden sikeres UDP küldés egy ETH csomag
+        ble_logger_on_eth_packet();
+
+        sendto(s_sock, out, enc_len, 0,
+               (struct sockaddr*)&sa, sizeof(sa));
+
         sa.sin_family      = AF_INET;
         sa.sin_port        = htons(IPS.dest[i].dest_port);
         sa.sin_addr.s_addr = IPS.dest[i].dest_ip.addr;
