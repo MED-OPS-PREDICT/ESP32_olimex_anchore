@@ -694,6 +694,12 @@ function updateChartsFromSamples(samples){
   errorChart.update('none');
 }
 
+function setText(id, value) {
+  // id lehet "kpiUptime" vagy "#kpiUptime" is
+  const el = document.getElementById(id.startsWith('#') ? id.slice(1) : id);
+  if (el) el.textContent = value;
+}
+
 // ===== KPI és táblák frissítése =====
 function updateKpis(stat){
   // Uptime
@@ -701,8 +707,8 @@ function updateKpis(stat){
   if(!Number.isFinite(uptimeSec) && stat.uptime_ms != null){
     uptimeSec = Number(stat.uptime_ms)/1000;
   }
-  $('#kpiUptime').textContent    = fmtSeconds(uptimeSec);
-  $('#kpiUptimeRaw').textContent = Number.isFinite(uptimeSec) ? uptimeSec.toFixed(0)+' s' : '';
+  setText('kpiUptime',    fmtSeconds(uptimeSec));
+  setText('kpiUptimeRaw', Number.isFinite(uptimeSec) ? uptimeSec.toFixed(0)+' s' : '');
 
   // CPU
   const cpu = stat.cpu || {};
@@ -711,9 +717,7 @@ function updateKpis(stat){
     const f = Number(cpu.load);
     if(Number.isFinite(f)) cpuPct = f*100.0;
   }
-  $('#kpiCpuLoad').textContent = Number.isFinite(cpuPct)
-    ? cpuPct.toFixed(1)+' %'
-    : '–';
+  setText('kpiCpuLoad', Number.isFinite(cpuPct) ? cpuPct.toFixed(1)+' %' : '–');
 
   // Heap
   const heap = stat.heap || {};
@@ -721,10 +725,10 @@ function updateKpis(stat){
   if(!Number.isFinite(heapFree) && heap.int_free != null){
     heapFree = Number(heap.int_free);
   }
-  $('#kpiHeap').textContent    = fmtBytes(heapFree);
-  $('#kpiHeapRaw').textContent = Number.isFinite(heapFree) ? heapFree + ' B' : '';
+  setText('kpiHeap',    fmtBytes(heapFree));
+  setText('kpiHeapRaw', Number.isFinite(heapFree) ? heapFree + ' B' : '');
 
-  // BLE/ETH KPI – most placeholder (0), ha van adatod, ide tedd be
+  // BLE/ETH KPI
   const ble = stat.ble || {};
   const eth = stat.eth || {};
   const bleTotal = (ble.rx_total||0) + (ble.tx_total||0);
@@ -734,14 +738,14 @@ function updateKpis(stat){
     ? ((ble.err_rate||0)+(eth.err_rate||0))/2
     : NaN;
 
-  $('#kpiBleRate').textContent  = fmtRate(ble.rx_rate || NaN, 'pkt/s');
-  $('#kpiBleTotal').textContent = bleTotal ? (bleTotal + ' csomag összesen') : '';
+  setText('kpiBleRate',  fmtRate(ble.rx_rate || NaN, 'pkt/s'));
+  setText('kpiBleTotal', bleTotal ? (bleTotal + ' csomag összesen') : '');
 
-  $('#kpiEthRate').textContent  = fmtRate(eth.rx_rate || NaN, 'pkt/s');
-  $('#kpiEthTotal').textContent = ethTotal ? (ethTotal + ' csomag összesen') : '';
+  setText('kpiEthRate',  fmtRate(eth.rx_rate || NaN, 'pkt/s'));
+  setText('kpiEthTotal', ethTotal ? (ethTotal + ' csomag összesen') : '');
 
-  $('#kpiErrRate').textContent  = fmtPercent(errRate);
-  $('#kpiErrTotal').textContent = errTotal ? (errTotal + ' hiba összesen') : '';
+  setText('kpiErrRate',  fmtPercent(errRate));
+  setText('kpiErrTotal', errTotal ? (errTotal + ' hiba összesen') : '');
 }
 
 function updateCpuMemGauges(stat){
