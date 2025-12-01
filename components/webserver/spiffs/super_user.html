@@ -225,55 +225,6 @@
     overflow-x:auto;
   }
 
-  /* ===== csúszó kapcsoló az ENG mezőkhöz ===== */
-    .toggle-wrap{
-      display:inline-flex;
-      align-items:center;
-      gap:6px;
-    }
-
-    .switch{
-      position:relative;
-      display:inline-block;
-      width:40px;
-      height:20px;
-    }
-
-    .switch input{
-      opacity:0;
-      width:0;
-      height:0;
-    }
-
-    .slider{
-      position:absolute;
-      cursor:pointer;
-      inset:0;
-      background:rgba(255,255,255,.18);
-      border-radius:999px;
-      transition:.2s;
-    }
-
-    .slider:before{
-      position:absolute;
-      content:"";
-      height:16px;
-      width:16px;
-      left:2px;
-      top:2px;
-      background:#000;
-      border-radius:50%;
-      transition:.2s;
-    }
-
-    .switch input:checked + .slider{
-      background:var(--ok);
-    }
-
-    .switch input:checked + .slider:before{
-      transform:translateX(20px);
-    }
-
   table{
     width:100%;
     border-collapse:collapse;
@@ -331,15 +282,14 @@
     overflow: auto;
   }
 
-  #warn{
-    display:none;
-    background:#3b2a00;
-    color:#ffd48a;
-    border:1px solid #7a5400;
-    padding:8px 10px;
-    border-radius:10px;
-    margin:10px 0;
-  }
+    #warn {
+      display: none !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      border: 0 !important;
+      height: 0 !important;
+      background: transparent !important;
+    }
 
   @media (max-width: 900px){
     .wrap{padding:10px;}
@@ -357,8 +307,6 @@
 </header>
 
 <div class="wrap">
-  <div id="warn" class="mono"></div>
-
     <!-- DWM kapcsolat kártya – teljes szélesség -->
     <section class="card full">
       <div class="hd">
@@ -531,6 +479,15 @@
 window.addEventListener('error', e => { logln('[JS-ERROR] '+(e.message||e)); });
 window.addEventListener('unhandledrejection', e => { logln('[JS-PROMISE] '+(e.reason||e)); });
 
+/* ===== állapot ===== */
+let g = { dev:null, server:null, svc:null, cfg:null, data:null, esp:{}, dwm:{} };
+
+let hbTimeoutMs    = 5000;   // ennyit várjon a "Nincs BLE kapcsolat..." előtt
+let noBleTimer     = null;   // erre rakjuk a setTimeout handle-t
+
+let statusPeriodMs = 5000;   // státusz polling periódus
+let statusInterval = null;   // setInterval handle
+
 /* ===== util + soros írható log ===== */
 const $  = id => document.getElementById(id);
 const qs = s  => document.querySelector(s);
@@ -573,17 +530,8 @@ function logln(s){
 
 /* ===== Secure Context ellenőrzés ===== */
 (function(){
-  const secure = (location.protocol === 'https:' ||
-                  location.hostname === 'localhost' ||
-                  location.hostname === '127.0.0.1');
-  if(!secure){
-    const w = $('warn');
-    w.style.display = 'block';
-  }
-  if(!('bluetooth' in navigator)){
-    const w = $('warn');
-    w.style.display = 'block';
-  }
+  const w = $('warn');
+  if (w) w.style.display = 'none';
 })();
 
 /* ===== renderdef ===== */
@@ -734,28 +682,9 @@ function renderGroup(tblId, items, cfg){
 
     const inputAttrs = inputTip ? ` title="${inputTip}"` : '';
 
-    let input;
-    const isEnableToggle =
-      key === 'ZONE_CTRL_EN' ||
-      key === 'MAIN_EN'     ||
-      key === 'SERVICE_EN';
-
-    if (it.edit && isEnableToggle) {
-      // alap állapot: engedélyezett-e az ESP config szerint
-      const on = (g.esp && (g.esp[key] === 1 || g.esp[key] === '1' || g.esp[key] === true));
-      input = `
-        <div class="toggle-wrap"${inputAttrs}>
-          <label class="switch">
-            <input type="checkbox" id="in_${key}" ${on ? 'checked' : ''}>
-            <span class="slider"></span>
-          </label>
-          <span class="muted mono" id="lbl_${key}">${on ? 'engedélyezve' : 'tiltva'}</span>
-        </div>`;
-    } else if (it.edit) {
-      input = `<input class="inp mono" id="in_${key}" placeholder="${placeholder}"${inputAttrs}>`;
-    } else {
-      input = `<input class="inp" id="in_${key}" placeholder="nem írható" disabled${inputAttrs}>`;
-    }
+    const input = it.edit
+      ? `<input class="inp mono" id="in_${key}" placeholder="${placeholder}"${inputAttrs}>`
+      : `<input class="inp" id="in_${key}" placeholder="nem írható" disabled${inputAttrs}>`;
 
     const cells = [];
     cells.push(`<td>${labelHtml}</td>`);
@@ -767,6 +696,116 @@ function renderGroup(tblId, items, cfg){
   }).join('');
 }
 
+function setPillEl(id, state, text) {
+  const el = $(id);
+  if (!el) return;
+
+  // régi állapotok leszedése
+  el.classList.remove('ok', 'warn', 'err');
+
+  // új állapot felrakása
+  if (state) {
+    el.classList.add(state);
+  }
+
+  // felirat frissítése, ha kaptunk szöveget
+  if (typeof text === 'string') {
+    el.textContent = text;
+  }
+}
+
+async function refreshStatus() {
+  try {
+    const r = await fetch('/api/status', { cache: 'no-store' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const s = await r.json();
+
+    // BLE állapot (csak a BLE linket nézzük)
+    if (s.ble_up) {
+      setPillEl('pillBle', 'ok', 'BLE: kapcsolódva');
+    } else {
+      setPillEl('pillBle', 'err', 'BLE: nincs kapcsolat');
+    }
+
+    // ---- ETH ----
+    if (s.eth_up) {
+      setPillEl('pillEth', 'ok',  'ETH: van IP');
+    } else {
+      setPillEl('pillEth', 'err', 'ETH: nincs IP');
+    }
+
+    // ---- zóna / main / service engedély ----
+    setPillEl('pillZone',  s.zone_en    ? 'ok' : 'warn',
+              s.zone_en    ? 'Zóna vezérlő: engedélyezve' : 'Zóna vezérlő: tiltva');
+
+    setPillEl('pillMain',  s.main_en    ? 'ok' : 'warn',
+              s.main_en    ? 'Fő szerver: engedélyezve'   : 'Fő szerver: tiltva');
+
+    setPillEl('pillServ',  s.service_en ? 'ok' : 'warn',
+              s.service_en ? 'Service: engedélyezve'      : 'Service: tiltva');
+
+    // ---- Anchor / szinkron szöveg ----
+    const as = $('anchorStatus');
+    if (as) {
+      let txt, level;
+
+      if (!s.ble_up) {
+        // BLE down → itt jön a HB_MS-es késleltetés
+        if (!noBleTimer) {
+          noBleTimer = setTimeout(() => {
+            const as2 = $('anchorStatus');
+            if (as2) {
+              as2.textContent = 'Nincs BLE kapcsolat az anchorral';
+              as2.className   = 'anchor-status err';
+            }
+            noBleTimer = null;
+          }, hbTimeoutMs);
+        }
+        txt   = 'BLE kapcsolat bontása alatt…';
+        level = 'warn';
+      } else {
+        // BLE OK → töröljük az esetleges BLE timer-t
+        if (noBleTimer) {
+          clearTimeout(noBleTimer);
+          noBleTimer = null;
+        }
+
+        // Heartbeat alapján döntés (hb_status itt láthatóan szám)
+        const ageMs = Number(s.hb_status);
+        if (Number.isFinite(ageMs)) {
+          if (ageMs > hbTimeoutMs) {
+            txt   = `Nem jön HB az anchorból (${ageMs} ms)`;
+            level = 'err';
+          } else {
+            txt   = `HB rendben`;
+            level = 'ok';
+          }
+        } else {
+          txt   = 'Anchor állapot: ismeretlen';
+          level = 'warn';
+        }
+      }
+
+      as.textContent = txt;
+      as.className   = 'anchor-status ' + level;
+    }
+
+  } catch (e) {
+    logln('[STATUS] hiba: ' + e.message);
+    setPillEl('pillEth', 'err', 'ETH: hiba');
+    setPillEl('pillBle', 'err', 'BLE: hiba');
+  }
+}
+
+// induláskor + időszakosan
+refreshStatus();
+statusInterval = setInterval(refreshStatus, statusPeriodMs);
+
+/* ===== események ===== */
+$('btnDwmGet'    ).addEventListener('click', doDwmGet);
+$('btnEspGet'    ).addEventListener('click', doEspGet);
+$('btnApply'     ).addEventListener('click', doSetBoth);
+
 function renderAll(){
   // közös: ESP + DWM
   renderGroup('tblBase', GROUPS.base, { showEsp:true, showDwm:true });
@@ -777,10 +816,7 @@ function renderAll(){
   renderGroup('tblPhy',  GROUPS.phy,  { showEsp:false, showDwm:true });
 }
 
-/* ===== állapot ===== */
-let g = { dev:null, server:null, svc:null, cfg:null, data:null, esp:{}, dwm:{} };
-
-/* ===== ESP GET (HTTP) ===== */
+// ESP GET után, amikor megjön a config:
 async function doEspGet(){
   if (gBusy) return;
   setBusy(true);
@@ -794,6 +830,19 @@ async function doEspGet(){
     if(!r.ok) r = await fetch('/api/esp_config', { cache:'no-store', headers:hdr });
     if(!r.ok) throw new Error('HTTP '+r.status);
     g.esp = await r.json();
+
+    // HB_MS beolvasása
+    if (g.esp.HB_MS) {
+      const n = Number(g.esp.HB_MS);
+      if (Number.isFinite(n) && n > 0) {
+        hbTimeoutMs = n;        // ennyit vár a "Nincs BLE kapcsolat..." felirat
+        statusPeriodMs = n;     // ha a pollingot is ehhez akarod igazítani
+        if (statusInterval) clearInterval(statusInterval);
+        statusInterval = setInterval(refreshStatus, statusPeriodMs);
+        logln('[ESP] HB_MS: ' + n + ' ms');
+      }
+    }
+
     renderAll();
     logln('[ESP] kész');
   }catch(e){
@@ -996,80 +1045,6 @@ async function openSerial(){
     logln('[SERIAL] nyitási hiba: '+e);
   }
 }
-function setPillEl(id, level, txt) {
-  const el = $(id);
-  if (!el) return;
-  let cls = 'pill ';
-  if (level === 'ok') cls += 'ok';
-  else if (level === 'warn') cls += 'warn';
-  else cls += 'err';
-  el.className = cls;
-  el.textContent = txt;
-}
-
-async function refreshStatus() {
-  try {
-    const r = await fetch('/api/status', { cache: 'no-store' });
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    const s = await r.json();
-
-    // BLE állapot (csak a BLE linket nézzük)
-    if (s.ble_up) {
-      setPillEl('pillBle', 'ok', 'BLE: kapcsolódva');
-    } else {
-      setPillEl('pillBle', 'err', 'BLE: nincs kapcsolat');
-    }
-
-    // ---- ETH ----
-    if (s.eth_up) {
-      setPillEl('pillEth', 'ok',  'ETH: van IP');
-    } else {
-      setPillEl('pillEth', 'err', 'ETH: nincs IP');
-    }
-
-    // ---- zóna / main / service engedély ----
-    setPillEl('pillZone',  s.zone_en    ? 'ok' : 'warn',
-              s.zone_en    ? 'Zóna vezérlő: engedélyezve' : 'Zóna vezérlő: tiltva');
-
-    setPillEl('pillMain',  s.main_en    ? 'ok' : 'warn',
-              s.main_en    ? 'Fő szerver: engedélyezve'   : 'Fő szerver: tiltva');
-
-    setPillEl('pillServ',  s.service_en ? 'ok' : 'warn',
-              s.service_en ? 'Service: engedélyezve'      : 'Service: tiltva');
-
-    // ---- Anchor / szinkron szöveg ----
-    const as = $('anchorStatus');
-    if (as) {
-      // ha nincs HB, akkor csak egy összefoglalt üzenet
-      let txt   = s.hb_text  || 'Anchor állapot: ismeretlen';
-      let level = s.hb_level || 'warn'; // ok / warn / err
-
-      // opcionális: ha sem HB, sem BLE nincs, akkor írhatsz külön üzenetet
-      if (!s.hb_status && !s.ble_up) {
-        txt   = 'Nincs BLE kapcsolat az anchorral';
-        level = 'err';
-      }
-
-      as.textContent = txt;
-      as.className   = 'anchor-status ' + level;
-    }
-
-  } catch (e) {
-    logln('[STATUS] hiba: ' + e.message);
-    setPillEl('pillEth', 'err', 'ETH: hiba');
-    setPillEl('pillBle', 'err', 'BLE: hiba');
-  }
-}
-
-// induláskor + időszakosan
-refreshStatus();
-setInterval(refreshStatus, 5000);
-
-/* ===== események ===== */
-$('btnDwmGet'    ).addEventListener('click', doDwmGet);
-$('btnEspGet'    ).addEventListener('click', doEspGet);
-$('btnApply'     ).addEventListener('click', doSetBoth);
-
 renderAll();
 applyFixedTooltips();   // <<< ÚJ – a fix inputok title-jei
 

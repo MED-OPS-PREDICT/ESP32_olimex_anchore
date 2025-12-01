@@ -854,30 +854,20 @@ static esp_err_t api_status_get(httpd_req_t* req){
     httpd_resp_set_type(req,"application/json");
     return httpd_resp_send(req, buf, n);
 }
-
 /* ================= Server start/stop ================= */
 esp_err_t webserver_start(){
     if (s_http) return ESP_OK;
 
-    /* 1) próbáljuk NVS-ből betölteni az ESP configot */
+    /* 1) NVS betöltés, stb... */
     bool have_nvs_cfg = esp_cfg_load_from_nvs();
-
     if (have_nvs_cfg) {
-        /* 2a) ha volt mentett cfg, azt tekintjük igaznak:
-               g_cfg -> NET/IPS */
         globals_from_gcfg();
-
-        /* 2a/bis) AZONNAL alkalmazzuk a NET-ből az IP-t az ethernetre is */
         ethernet_reapply_ip_from_net();
     } else {
-        /* 2b) ha nincs NVS, indulunk a compile-time default NET/IPS-ből,
-               és abból gyártunk g_cfg-et a UI-nak */
         gcfg_from_globals();
-        // opcionálisan: esp_cfg_save_to_nvs();
     }
 
     aes_sender_init();
-
     if (g_cfg.aes_key_hex[0] != '\0') {
         aes_sender_set_key_hex(g_cfg.aes_key_hex);
     }
@@ -892,6 +882,10 @@ esp_err_t webserver_start(){
     // BLE bridge
     ble_http_bridge_init();
     http_register_routes(s_http);   // /api/dwm_get
+
+    // *** ITT REGISZTRÁLD A STATS API-T + /stats OLDALT ***
+    web_stats_init();
+    web_stats_register_handlers(s_http);   // ebben van /api/stats
 
     // Pages
     httpd_uri_t u{};
@@ -915,15 +909,24 @@ esp_err_t webserver_start(){
     get_meta.handler= api_meta_get;
     httpd_register_uri_handler(s_http, &get_meta);
 
-    httpd_uri_t get_cfg{};  get_cfg.method=HTTP_GET;    get_cfg.uri="/api/config";   get_cfg.handler=api_config_get;
+    httpd_uri_t get_cfg{};
+    get_cfg.method=HTTP_GET;
+    get_cfg.uri="/api/config";
+    get_cfg.handler=api_config_get;
     httpd_register_uri_handler(s_http,&get_cfg);
 
     // API POST-ok
-    httpd_uri_t post_cfg{}; post_cfg.method=HTTP_POST;  post_cfg.uri="/api/config";  post_cfg.handler=api_config_post;
+    httpd_uri_t post_cfg{};
+    post_cfg.method=HTTP_POST;
+    post_cfg.uri="/api/config";
+    post_cfg.handler=api_config_post;
     httpd_register_uri_handler(s_http,&post_cfg);
 
     // AUTH: POST + OPTIONS (preflight)
-    httpd_uri_t auth_post{}; auth_post.method=HTTP_POST;    auth_post.uri="/auth/login";    auth_post.handler=auth_login_post;
+    httpd_uri_t auth_post{};
+    auth_post.method=HTTP_POST;
+    auth_post.uri="/auth/login";
+    auth_post.handler=auth_login_post;
     httpd_register_uri_handler(s_http,&auth_post);
 
     // Preflight OPTIONS minden érintett útvonalra
@@ -934,7 +937,7 @@ esp_err_t webserver_start(){
     opt.uri="/api/dwm_get";   httpd_register_uri_handler(s_http,&opt);
     opt.uri="/api/dwm_last";  httpd_register_uri_handler(s_http,&opt);   // ÚJ
 
-    // Root és catch-all → login
+    // Reboot API
     httpd_uri_t uri_reboot = {
         .uri      = "/api/reboot",
         .method   = HTTP_POST,
@@ -973,10 +976,6 @@ esp_err_t webserver_start(){
     any.uri     = "/*";
     any.handler = login_get;
     httpd_register_uri_handler(s_http, &any);
-
-
-    web_stats_init();
-    web_stats_register_handlers(s_http);
 
     ESP_LOGI(TAG,"webserver started");
 
