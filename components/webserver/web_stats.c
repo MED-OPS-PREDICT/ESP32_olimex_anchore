@@ -44,6 +44,8 @@ static volatile uint64_t s_idle_last_us[CORE_COUNT] = {0, 0};
 static uint64_t s_prev_time_us = 0;
 static uint64_t s_prev_idle_us[CORE_COUNT] = {0, 0};
 
+static float s_last_core_load[CORE_COUNT] = {0, 0};   // legutóbbi mintavétel magonként
+
 static bool idle_hook_core0(void)
 {
     uint64_t now  = esp_timer_get_time();
@@ -93,6 +95,8 @@ static float cpu_load_sample(void)
         double   load      = 1.0 - idle_frac;
         if (load < 0.0) load = 0.0;
         if (load > 1.0) load = 1.0;
+
+        s_last_core_load[i] = (float)load;
 
         sum += load;
         used++;
@@ -190,6 +194,11 @@ static esp_err_t web_stats_api(httpd_req_t *req)
     uint32_t ps_used  = (uint32_t)((ps_total > ps_free) ? (ps_total - ps_free) : 0);
 
     double loadF = (double)load;  // 0..1, ezt várja a frontend stat.cpu.load-ként
+
+    double core0_pct = (double)s_last_core_load[0] * 100.0;
+    double core1_pct = (CORE_COUNT > 1 ? (double)s_last_core_load[1] : core0_pct);
+    double total_pct = loadF * 100.0;
+
     // BLE / ETH KPI-k a ble_logger-ből
     ble_eth_kpi_t ble_kpi = {0};
     ble_eth_kpi_t eth_kpi = {0};
@@ -242,8 +251,8 @@ static esp_err_t web_stats_api(httpd_req_t *req)
             "\"mhz\":%u,"
             "\"cores\":2,"
             "\"load\":%.3f,"
-            "\"cores_load\":[%u,%u],"
-            "\"total\":%u"
+            "\"cores_load\":[%.1f,%.1f],"
+            "\"total\":%.1f"
           "},"
           "\"chip\":{"
             "\"model\":\"ESP32\","
@@ -285,9 +294,9 @@ static esp_err_t web_stats_api(httpd_req_t *req)
         (unsigned long long)uptime_sec,
         (unsigned)CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ,
         loadF,
-        (unsigned)lround(loadF * 100.0),
-        (unsigned)lround(loadF * 100.0),
-        (unsigned)lround(loadF * 100.0),
+        core0_pct,
+        core1_pct,
+        total_pct,
         chip.cores,
         chip.revision,
         (uint32_t)flash_total,

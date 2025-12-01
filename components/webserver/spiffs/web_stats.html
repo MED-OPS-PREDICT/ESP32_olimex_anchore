@@ -396,9 +396,10 @@
               <span class="legend-color" id="legendCpuIdle"></span> Idle
             </span>
           </div>
-          <div class="sec-title" style="margin-top:8px;font-size:12px;">
-            Használt: <span id="lblCpuUsed">–</span> • Idle: <span id="lblCpuIdle">–</span>
-          </div>
+            <div class="sec-title" style="margin-top:8px;font-size:12px;">
+                Használt: <span id="lblCpuUsed">–</span> • Idle: <span id="lblCpuIdle">–</span><br>
+                Magok: <span id="lblCpuCore0">–</span> / <span id="lblCpuCore1">–</span>
+            </div>
         </div>
         <div class="donut-wrap">
           <div class="donut-title">Belső heap kihasználtság</div>
@@ -769,6 +770,23 @@ function updateCpuMemGauges(stat){
 
   setText('lblCpuUsed', cpuUsedPct.toFixed(1)+' %');
   setText('lblCpuIdle', cpuIdlePct.toFixed(1)+' %');
+
+  // magonkénti load (cores_load[0], cores_load[1])
+  const cores = Array.isArray(cpu.cores_load) ? cpu.cores_load : [];
+  let core0 = Number(cores[0]);
+  let core1 = Number(cores[1]);
+
+  if (!Number.isFinite(core0)) core0 = NaN;
+  if (!Number.isFinite(core1)) core1 = NaN;
+
+  if (!Number.isFinite(core0) && Number.isFinite(core1)) core0 = core1;
+  if (!Number.isFinite(core1) && Number.isFinite(core0)) core1 = core0;
+
+  if (Number.isFinite(core0)) setText('lblCpuCore0', core0.toFixed(1) + ' %');
+  else setText('lblCpuCore0', '–');
+
+  if (Number.isFinite(core1)) setText('lblCpuCore1', core1.toFixed(1) + ' %');
+  else setText('lblCpuCore1', '–');
 
   // --- Heap ---
   const heap = stat.heap || {};
