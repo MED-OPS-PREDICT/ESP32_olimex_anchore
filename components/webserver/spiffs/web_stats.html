@@ -287,7 +287,6 @@
     <div class="muted">ESP állapot, BLE / Ethernet forgalom grafikonokkal</div>
   </div>
   <div class="toolbar">
-    <button class="btn ghost" id="btnRefreshOnce">Azonnali frissítés</button>
     <a href="/super" class="btn ghost" id="btnBack">Vissza a konfigurációhoz</a>
     <button class="btn" id="btnLogout">Kijelentkezés</button>
   </div>
@@ -800,15 +799,43 @@ function updateCpuMemGauges(stat){
   }
 }
 
-function updateLinkPills(stat){
-  const link = stat.link || {};
-  const bleUp  = !!link.ble_up;
-  const ethUp  = !!link.eth_up;
-  const mainUp = !!link.main_up;
+// /api/status JSON-ból tölti a pill-eket
+function updateLinkPillsFromStatus(s){
+  const bleUp  = !!s.ble_up;
+  const ethUp  = !!s.eth_up;
+  const mainUp = !!s.main_up;
 
-  setPill($('#pillBle'),  bleUp  ? 'ok'   : 'err', bleUp  ? 'BLE: élő kapcsolat'     : 'BLE: nincs kapcsolat');
-  setPill($('#pillEth'),  ethUp  ? 'ok'   : 'err', ethUp  ? 'ETH: élő kapcsolat'     : 'ETH: nincs IP / link');
-  setPill($('#pillMain'), mainUp ? 'ok'   : 'warn',mainUp ? 'Fő szerver: elérhető'   : 'Fő szerver: nem elérhető');
+  setPill($('#pillBle'),
+    bleUp ? 'ok' : 'err',
+    bleUp ? 'BLE: élő kapcsolat' : 'BLE: nincs kapcsolat'
+  );
+
+  setPill($('#pillEth'),
+    ethUp ? 'ok' : 'err',
+    ethUp ? 'ETH: élő kapcsolat' : 'ETH: nincs IP / link'
+  );
+
+  setPill($('#pillMain'),
+    mainUp ? 'ok' : 'warn',
+    mainUp ? 'Fő szerver: elérhető' : 'Fő szerver: nem elérhető'
+  );
+}
+
+// egyszeri /api/status lekérés
+async function fetchStatusOnce(){
+  try{
+    const r = await fetch('/api/status', { cache:'no-store' });
+    if(!r.ok) throw new Error('HTTP ' + r.status);
+    const st = await r.json();
+    updateLinkPillsFromStatus(st);
+  }catch(e){
+    console.error('[status] hiba', e);
+  }
+}
+
+// periodikus státusz frissítés (pl. 5 mp-enként)
+function startStatusPolling(){
+  setInterval(fetchStatusOnce, 5000);
 }
 
 function updateLastTables(stat){
@@ -871,7 +898,7 @@ async function fetchStatsOnce(){
     const stat = await r.json();
 
     updateKpis(stat);
-    updateLinkPills(stat);
+    // updateLinkPills(stat);
     updateChartsFromSamples(stat.samples || []);
     updateCpuMemGauges(stat);
     updateLastTables(stat);
@@ -910,6 +937,10 @@ function setupLogout(){
 window.addEventListener('DOMContentLoaded', () => {
   initCharts();
   setupLogout();
+
+  // pill-ek státusza /api/status-ból
+  fetchStatusOnce();      // azonnali frissítés
+  startStatusPolling();   // 5 mp-enként ismétli
 
   $('#btnRefreshOnce')?.addEventListener('click', fetchStatsOnce);
 
