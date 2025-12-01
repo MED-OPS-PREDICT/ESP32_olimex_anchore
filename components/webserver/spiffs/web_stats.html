@@ -751,6 +751,7 @@ function updateKpis(stat){
 function updateCpuMemGauges(stat){
   if(!cpuGauge || !heapGauge) return;
 
+  // --- CPU ---
   const cpu = stat.cpu || {};
   let cpuPct = Number(cpu.total);
   if(!Number.isFinite(cpuPct) && cpu.load != null){
@@ -766,9 +767,10 @@ function updateCpuMemGauges(stat){
   cpuGauge.data.datasets[0].data = [cpuUsedPct, cpuIdlePct];
   cpuGauge.update('none');
 
-  $('#lblCpuUsed').textContent = cpuUsedPct.toFixed(1)+' %';
-  $('#lblCpuIdle').textContent = cpuIdlePct.toFixed(1)+' %';
+  setText('lblCpuUsed', cpuUsedPct.toFixed(1)+' %');
+  setText('lblCpuIdle', cpuIdlePct.toFixed(1)+' %');
 
+  // --- Heap ---
   const heap = stat.heap || {};
   const intTotal = Number(heap.int_total);
   let intUsed   = Number(heap.int_used);
@@ -790,11 +792,11 @@ function updateCpuMemGauges(stat){
   heapGauge.data.datasets[0].data = [heapUsedPct, heapFreePct];
   heapGauge.update('none');
 
-  $('#lblHeapUsed').textContent = Number.isFinite(intUsed) ? fmtBytes(intUsed) : '–';
+  setText('lblHeapUsed', Number.isFinite(intUsed) ? fmtBytes(intUsed) : '–');
   if(Number.isFinite(intTotal) && Number.isFinite(intUsed)){
-    $('#lblHeapFree').textContent = fmtBytes(intTotal - intUsed);
+    setText('lblHeapFree', fmtBytes(intTotal - intUsed));
   }else{
-    $('#lblHeapFree').textContent = '–';
+    setText('lblHeapFree', '–');
   }
 }
 
@@ -880,11 +882,12 @@ async function fetchStatsOnce(){
     }
     const ts = Number.isFinite(tsSec) ? new Date(tsSec*1000) : new Date();
 
-    $('#lblLastUpdate').textContent = 'Utolsó frissítés: ' +
-      ts.toLocaleTimeString('hu-HU',{hour12:false});
+    setText('lblLastUpdate',
+      'Utolsó frissítés: ' + ts.toLocaleTimeString('hu-HU',{hour12:false})
+    );
   }catch(e){
     console.error('[stats] hiba', e);
-    $('#lblLastUpdate').textContent = 'Utolsó frissítés: hiba – ' + e.message;
+    setText('lblLastUpdate', 'Utolsó frissítés: hiba – ' + e.message);
   }
 }
 
