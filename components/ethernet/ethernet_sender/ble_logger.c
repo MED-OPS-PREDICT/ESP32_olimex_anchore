@@ -26,6 +26,19 @@ static uint16_t g_last_hb_sync   = 0;
 uint32_t uptime = 0;
 uint32_t sync_ms = 0;
 
+typedef struct {
+    uint32_t rx_total;
+    uint32_t tx_total;
+    uint32_t err_total;
+    // az utolsó /api/stats hívás óta bejött mennyiség:
+    uint32_t rx_since_last;
+    uint32_t err_since_last;
+    uint64_t last_ts_ms;
+} kpi_counter_t;
+
+static kpi_counter_t g_ble_kpi;
+static kpi_counter_t g_eth_kpi;
+
 // forward deklaráció (prototípus)
 void send_uwb_udp(const uint8_t *data, size_t len);
 

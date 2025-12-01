@@ -144,7 +144,7 @@ static esp_err_t web_stats_api(httpd_req_t *req)
 
     double loadF = (double)load;  // 0..1, ezt várja a frontend stat.cpu.load-ként
 
-    char buf[512];
+    char buf[1024];
     int n = snprintf(buf, sizeof(buf),
         "{"
           "\"ts\":%" PRIu64 ","
@@ -174,6 +174,22 @@ static esp_err_t web_stats_api(httpd_req_t *req)
             "\"psram_free\":%" PRIu32 ","
             "\"psram_total\":%" PRIu32 ","
             "\"psram_used\":%" PRIu32
+          "},"
+          "\"ble\":{"
+            "\"rx_rate\":0,"
+            "\"tx_rate\":0,"
+            "\"err_rate\":0,"
+            "\"rx_total\":0,"
+            "\"tx_total\":0,"
+            "\"err_total\":0"
+          "},"
+          "\"eth\":{"
+            "\"rx_rate\":0,"
+            "\"tx_rate\":0,"
+            "\"err_rate\":0,"
+            "\"rx_total\":0,"
+            "\"tx_total\":0,"
+            "\"err_total\":0"
           "}"
         "}\n",
         (unsigned long long)uptime_sec,          // ts
@@ -201,29 +217,13 @@ static esp_err_t web_stats_api(httpd_req_t *req)
         return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "fmt error");
     }
 
-    // --- BLE KPI placeholder ---
-    cJSON *js_ble = cJSON_CreateObject();
-    if (js_ble) {
-        cJSON_AddNumberToObject(js_ble, "rx_rate",   0.0);
-        cJSON_AddNumberToObject(js_ble, "tx_rate",   0.0);
-        cJSON_AddNumberToObject(js_ble, "err_rate",  0.0);
-        cJSON_AddNumberToObject(js_ble, "rx_total",  0);
-        cJSON_AddNumberToObject(js_ble, "tx_total",  0);
-        cJSON_AddNumberToObject(js_ble, "err_total", 0);
-        cJSON_AddItemToObject(root, "ble", js_ble);
+    if (n < 0) {
+        return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "fmt error");
     }
 
-    // --- ETH KPI placeholder ---
-    cJSON *js_eth = cJSON_CreateObject();
-    if (js_eth) {
-        cJSON_AddNumberToObject(js_eth, "rx_rate",   0.0);
-        cJSON_AddNumberToObject(js_eth, "tx_rate",   0.0);
-        cJSON_AddNumberToObject(js_eth, "err_rate",  0.0);
-        cJSON_AddNumberToObject(js_eth, "rx_total",  0);
-        cJSON_AddNumberToObject(js_eth, "tx_total",  0);
-        cJSON_AddNumberToObject(js_eth, "err_total", 0);
-        cJSON_AddItemToObject(root, "eth", js_eth);
-    }
+    httpd_resp_set_type(req, "application/json");
+    return httpd_resp_send(req, buf, n);
+}
 
     httpd_resp_set_type(req, "application/json");
     return httpd_resp_send(req, buf, n);

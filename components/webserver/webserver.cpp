@@ -807,7 +807,7 @@ static esp_err_t api_status_get(httpd_req_t* req){
         }
     }
 
-    char buf[512];
+    char buf[1024];
     int n = snprintf(buf, sizeof(buf),
         "{"
           "\"anchor\":\"%s\","
