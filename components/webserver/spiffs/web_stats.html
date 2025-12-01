@@ -647,13 +647,18 @@ function initCharts(){
   });
 
   // legend színek (Chart.js első dataset színei)
-  const cpuColors  = cpuGauge.data.datasets[0].backgroundColor || ['#2da8ff','#ff5d5d'];
-  const heapColors = heapGauge.data.datasets[0].backgroundColor || ['#2da8ff','#ff5d5d'];
+    const cpuColors  = cpuGauge.data.datasets[0].backgroundColor || ['#2da8ff','#ff5d5d'];
+    const heapColors = heapGauge.data.datasets[0].backgroundColor || ['#2da8ff','#ff5d5d'];
 
-  $('#legendCpuUsed').style.background  = cpuColors[0] || '#2da8ff';
-  $('#legendCpuIdle').style.background  = cpuColors[1] || '#ff5d5d';
-  $('#legendHeapUsed').style.background = heapColors[0] || '#2da8ff';
-  $('#legendHeapFree').style.background = heapColors[1] || '#ff5d5d';
+    const elCpuUsed  = $('#legendCpuUsed');
+    const elCpuIdle  = $('#legendCpuIdle');
+    const elHeapUsed = $('#legendHeapUsed');
+    const elHeapFree = $('#legendHeapFree');
+
+    if (elCpuUsed)  elCpuUsed.style.background  = cpuColors[0] || '#2da8ff';
+    if (elCpuIdle)  elCpuIdle.style.background  = cpuColors[1] || '#ff5d5d';
+    if (elHeapUsed) elHeapUsed.style.background = heapColors[0] || '#2da8ff';
+    if (elHeapFree) elHeapFree.style.background = heapColors[1] || '#ff5d5d';
 }
 
 const MAX_POINTS = 120; // kb. 4 perc 2s-es mintavételezésnél
