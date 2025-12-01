@@ -661,6 +661,7 @@ function initCharts(){
 }
 
 const MAX_POINTS = 120; // kb. 4 perc 2s-es mintavételezésnél
+let samples = [];
 
 function updateChartsFromSamples(samples){
   if(!trafficChart || !errorChart || !Array.isArray(samples)) return;
@@ -897,12 +898,31 @@ async function fetchStatsOnce(){
     if(!r.ok) throw new Error('HTTP '+r.status);
     const stat = await r.json();
 
+    // KPI-k, CPU/heap, táblák
     updateKpis(stat);
-    // updateLinkPills(stat);
-    updateChartsFromSamples(stat.samples || []);
     updateCpuMemGauges(stat);
     updateLastTables(stat);
 
+    // --- ÚJ: minta hozzáadása a helyi history-hoz ---
+    const ble = stat.ble || {};
+    const eth = stat.eth || {};
+
+    samples.push({
+      t: Date.now(),                             // időbélyeg ms-ben
+      ble_rx: Number(ble.rx_rate || 0),
+      eth_rx: Number(eth.rx_rate || 0),
+      ble_err: Number(ble.err_rate || 0),
+      eth_err: Number(eth.err_rate || 0),
+    });
+
+    if (samples.length > MAX_POINTS) {
+      samples.shift();                           // legrégebbi kidobása
+    }
+
+    // Diagram frissítése a lokális history-ból
+    updateChartsFromSamples(samples);
+
+    // Utolsó frissítés label
     let tsSec = Number(stat.ts);
     if(!Number.isFinite(tsSec) && stat.uptime_sec != null){
       tsSec = Number(stat.uptime_sec);
