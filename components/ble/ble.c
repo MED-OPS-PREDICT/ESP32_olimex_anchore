@@ -15,6 +15,7 @@
 #include "esp_gap_ble_api.h"
 #include "esp_gattc_api.h"
 #include "esp_gatt_common_api.h"
+#include "web_stats.h"
 
 #include "ble.h"   // ble_start / ble_send_get / ble_send_set / ble_register_notify_cb
 

@@ -11,6 +11,7 @@
 #include "ble_logger.h"
 #include "aes_sender.h"
 #include "error_code_decoding.h"
+#include "web_stats.h"
 
 static const char *TAG_UWB = "UWB_DATA";
 

@@ -19,6 +19,20 @@ static const char *TAG = "WEB_STATS";
 
 #define CORE_COUNT 2
 
+typedef struct {
+    uint32_t rx_total;
+    uint32_t tx_total;
+    uint32_t err_total;
+
+    // legutóbbi /api/stats híváskor mért értékek (rate számításhoz)
+    uint32_t rx_last;
+    uint32_t err_last;
+} link_stats_t;
+
+static link_stats_t g_ble_stats = {0};
+static link_stats_t g_eth_stats = {0};
+static uint64_t     g_last_stats_ms = 0;   // utolsó /api/stats lekérés ideje (ms)
+
 /* =========================
  *  CPU terhelés (idle hook)
  * ========================= */
@@ -103,6 +117,38 @@ void web_stats_init(void)
     esp_register_freertos_idle_hook_for_cpu(&idle_hook_core1, 1);
 }
 
+void web_stats_ble_rx(bool ok)
+{
+    g_ble_stats.rx_total++;
+    if (!ok) {
+        g_ble_stats.err_total++;
+    }
+}
+
+void web_stats_ble_tx(bool ok)
+{
+    g_ble_stats.tx_total++;
+    if (!ok) {
+        g_ble_stats.err_total++;
+    }
+}
+
+void web_stats_eth_rx(bool ok)
+{
+    g_eth_stats.rx_total++;
+    if (!ok) {
+        g_eth_stats.err_total++;
+    }
+}
+
+void web_stats_eth_tx(bool ok)
+{
+    g_eth_stats.tx_total++;
+    if (!ok) {
+        g_eth_stats.err_total++;
+    }
+}
+
 /* =========================
  *  /api/stats handler
  * ========================= */
@@ -144,6 +190,43 @@ static esp_err_t web_stats_api(httpd_req_t *req)
 
     double loadF = (double)load;  // 0..1, ezt várja a frontend stat.cpu.load-ként
 
+    // --- BLE/ETH rate + hibaarány számítás ---
+    uint64_t now_ms = (uint64_t)(esp_timer_get_time() / 1000ULL);
+    if (g_last_stats_ms == 0) {
+        g_last_stats_ms = now_ms;
+    }
+
+    uint64_t dt_ms = now_ms - g_last_stats_ms;
+    if (dt_ms == 0) {
+        dt_ms = 1; // osztás védelem
+    }
+
+    // delta-k az előző /api/stats óta
+    uint32_t ble_rx_delta  = g_ble_stats.rx_total  - g_ble_stats.rx_last;
+    uint32_t ble_err_delta = g_ble_stats.err_total - g_ble_stats.err_last;
+    uint32_t eth_rx_delta  = g_eth_stats.rx_total  - g_eth_stats.rx_last;
+    uint32_t eth_err_delta = g_eth_stats.err_total - g_eth_stats.err_last;
+
+    double ble_rx_rate  = (double)ble_rx_delta * 1000.0 / (double)dt_ms;   // pkt/s
+    double eth_rx_rate  = (double)eth_rx_delta * 1000.0 / (double)dt_ms;   // pkt/s
+
+    double ble_err_rate = 0.0;
+    double eth_err_rate = 0.0;
+
+    if (ble_rx_delta > 0) {
+        ble_err_rate = 100.0 * (double)ble_err_delta / (double)ble_rx_delta;
+    }
+    if (eth_rx_delta > 0) {
+        eth_err_rate = 100.0 * (double)eth_err_delta / (double)eth_rx_delta;
+    }
+
+    // snapshot frissítés következő híváshoz
+    g_ble_stats.rx_last  = g_ble_stats.rx_total;
+    g_ble_stats.err_last = g_ble_stats.err_total;
+    g_eth_stats.rx_last  = g_eth_stats.rx_total;
+    g_eth_stats.err_last = g_eth_stats.err_total;
+    g_last_stats_ms      = now_ms;
+
     char buf[1024];
     int n = snprintf(buf, sizeof(buf),
         "{"
@@ -176,20 +259,20 @@ static esp_err_t web_stats_api(httpd_req_t *req)
             "\"psram_used\":%" PRIu32
           "},"
           "\"ble\":{"
-            "\"rx_rate\":0,"
-            "\"tx_rate\":0,"
-            "\"err_rate\":0,"
-            "\"rx_total\":0,"
-            "\"tx_total\":0,"
-            "\"err_total\":0"
+            "\"rx_rate\":%.3f,"
+            "\"tx_rate\":%.3f,"
+            "\"err_rate\":%.3f,"
+            "\"rx_total\":%" PRIu32 ","
+            "\"tx_total\":%" PRIu32 ","
+            "\"err_total\":%" PRIu32
           "},"
           "\"eth\":{"
-            "\"rx_rate\":0,"
-            "\"tx_rate\":0,"
-            "\"err_rate\":0,"
-            "\"rx_total\":0,"
-            "\"tx_total\":0,"
-            "\"err_total\":0"
+            "\"rx_rate\":%.3f,"
+            "\"tx_rate\":%.3f,"
+            "\"err_rate\":%.3f,"
+            "\"rx_total\":%" PRIu32 ","
+            "\"tx_total\":%" PRIu32 ","
+            "\"err_total\":%" PRIu32
           "}"
         "}\n",
         (unsigned long long)uptime_sec,          // ts
@@ -210,7 +293,20 @@ static esp_err_t web_stats_api(httpd_req_t *req)
         int_used,
         (uint32_t)ps_free,
         (uint32_t)ps_total,
-        ps_used
+        ps_used,
+        ble_rx_rate,
+        0.0,
+        ble_err_rate,
+        g_ble_stats.rx_total,
+        g_ble_stats.tx_total,
+        g_ble_stats.err_total,
+        eth_rx_rate,
+        0.0,
+        eth_err_rate,
+        g_eth_stats.rx_total,
+        g_eth_stats.tx_total,
+        g_eth_stats.err_total
+
     );
 
     if (n < 0) {
