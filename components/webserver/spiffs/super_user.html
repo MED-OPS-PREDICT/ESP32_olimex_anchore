@@ -474,6 +474,9 @@
   </section>
 </div>
 
+<!-- ÚJ: tooltipek külön fájlban -->
+<script src="/super_tooltips.js"></script>
+
 <script>
 /* ===== globális hibanapló ===== */
 window.addEventListener('error', e => { logln('[JS-ERROR] '+(e.message||e)); });
@@ -483,6 +486,26 @@ window.addEventListener('unhandledrejection', e => { logln('[JS-PROMISE] '+(e.re
 const $  = id => document.getElementById(id);
 const qs = s  => document.querySelector(s);
 let serialWriter = null;
+
+// Tooltip helper – külső fájlból (super_tooltips.js)
+function getKeyTooltip(key){
+  const t = window.SUPER_TOOLTIPS && SUPER_TOOLTIPS.keys && SUPER_TOOLTIPS.keys[key];
+  return t || '';
+}
+
+function getInputTooltip(id){
+  const t = window.SUPER_TOOLTIPS && SUPER_TOOLTIPS.inputs && SUPER_TOOLTIPS.inputs[id];
+  return t || '';
+}
+
+// Fix mezők (svcUuid, cfgUuid, ...) tooltipeinek beállítása
+function applyFixedTooltips(){
+  if (!window.SUPER_TOOLTIPS || !SUPER_TOOLTIPS.inputs) return;
+  Object.entries(SUPER_TOOLTIPS.inputs).forEach(([id, text]) => {
+    const el = document.getElementById(id);
+    if (el && !el.title) el.title = text;
+  });
+}
 
 function slog(s){
   if(serialWriter){
@@ -624,38 +647,50 @@ function renderGroup(tblId, items, cfg){
       return `<tr><td colspan="${colSpan}" class="muted" style="padding-top:10px;font-weight:600;">${it.hdr}</td></tr>`;
     }
 
-const key   = it.k;
-const label = it.label || key;
-let esp = (g.esp && g.esp[key] !== undefined) ? g.esp[key] : '';
-let dwm = (g.dwm && g.dwm[key] !== undefined) ? g.dwm[key] : '';
+    const key   = it.k;
+    const label = it.label || key;
 
-// ZONE_ID: hex formázás a megjelenítéshez
-if (key === 'ZONE_ID') {
-  if (esp !== '-' && esp != null) {
-    esp = fmtZoneIdHex(esp);
-  }
+    let esp = (g.esp && g.esp[key] !== undefined) ? g.esp[key] : '';
+    let dwm = (g.dwm && g.dwm[key] !== undefined) ? g.dwm[key] : '';
 
-  let src = null;
-  if (g.dwm) {
-    if (g.dwm.ZONE_ID_HEX) src = g.dwm.ZONE_ID_HEX;
-    else if (g.dwm.ZONE_ID !== undefined) src = g.dwm.ZONE_ID;
-  }
-  if (src != null) dwm = fmtZoneIdHex(src);
-  else dwm = '';
-}
+    // ----- ZONE_ID: hex formázás a megjelenítéshez -----
+    if (key === 'ZONE_ID') {
+      if (esp !== '-' && esp != null) {
+        esp = fmtZoneIdHex(esp);
+      }
 
-// placeholder – ZONE_ID-nek hex minta
-let placeholder = 'új érték';
-if (key === 'ZONE_ID') {
-  placeholder = '0x1234';
-}
+      let src = null;
+      if (g.dwm) {
+        if (g.dwm.ZONE_ID_HEX)        src = g.dwm.ZONE_ID_HEX;
+        else if (g.dwm.ZONE_ID !== undefined) src = g.dwm.ZONE_ID;
+      }
+      if (src != null) dwm = fmtZoneIdHex(src);
+      else dwm = '';
+    }
+    // ----------------------------------------------------
 
-const input = it.edit
-  ? `<input class="inp mono" id="in_${key}" placeholder="${placeholder}">`
-  : `<input class="inp" id="in_${key}" placeholder="nem írható" disabled>`;
+    // placeholder – ZONE_ID-nek hex minta
+    let placeholder = 'új érték';
+    if (key === 'ZONE_ID') {
+      placeholder = '0x1234';
+    }
+
+    // TOOLTIP SZÖVEGEK
+    const keyTip   = getKeyTooltip(key);
+    const inputTip = getInputTooltip('in_'+key) || keyTip;
+
+    const labelHtml = keyTip
+      ? `<span title="${keyTip}">${label}</span>`
+      : label;
+
+    const inputAttrs = inputTip ? ` title="${inputTip}"` : '';
+
+    const input = it.edit
+      ? `<input class="inp mono" id="in_${key}" placeholder="${placeholder}"${inputAttrs}>`
+      : `<input class="inp" id="in_${key}" placeholder="nem írható" disabled${inputAttrs}>`;
 
     const cells = [];
-    cells.push(`<td>${label}</td>`);
+    cells.push(`<td>${labelHtml}</td>`);
     if (showEsp) cells.push(cell(esp));
     if (showDwm) cells.push(cell(dwm));
     cells.push(`<td>${input}</td>`);
@@ -961,6 +996,7 @@ $('btnEspGet'    ).addEventListener('click', doEspGet);
 $('btnApply'     ).addEventListener('click', doSetBoth);
 
 renderAll();
+applyFixedTooltips();   // <<< ÚJ – a fix inputok title-jei
 
 // Oldalbetöltéskor automatikusan:
 //  - ESP config lekérdezés (/api/config) – gyors
