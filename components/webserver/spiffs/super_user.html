@@ -741,8 +741,8 @@ async function refreshStatus() {
     setPillEl('pillMain',  s.main_en    ? 'ok' : 'warn',
               s.main_en    ? 'Fő szerver: engedélyezve'   : 'Fő szerver: tiltva');
 
-    setPillEl('pillServ',  s.service_en ? 'ok' : 'warn',
-              s.service_en ? 'Service: engedélyezve'      : 'Service: tiltva');
+    setPillEl('pillServ',  s.service_en ? 'err' : 'ok',
+              s.service_en ? 'Service: engedélyezve' : 'Service: tiltva');
 
     // ---- Anchor / szinkron szöveg ----
     const as = $('anchorStatus');
