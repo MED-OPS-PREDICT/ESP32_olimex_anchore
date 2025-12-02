@@ -346,7 +346,7 @@ static esp_err_t web_stats_api(httpd_req_t *req)
             "\"tx_total\":%" PRIu32 ","
             "\"err_total\":%" PRIu32
           "}"
-        "}\n",
+        "}",
         (unsigned long long)uptime_sec,          // ts
         (unsigned long long)uptime_ms,
         (unsigned long long)uptime_sec,
@@ -424,10 +424,6 @@ static esp_err_t web_stats_api(httpd_req_t *req)
         first = 0;
     }
     n += snprintf(buf + n, sizeof(buf) - n, "]}\n");
-
-    if (n < 0) {
-        return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "fmt error");
-    }
 
     if (n < 0) {
         return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "fmt error");
