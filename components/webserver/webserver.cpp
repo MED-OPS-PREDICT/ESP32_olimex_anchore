@@ -197,8 +197,8 @@ static esp_err_t send_file(httpd_req_t* req, const char* path, const char* ctype
 static esp_err_t login_get(httpd_req_t* r){ return send_file(r,"/spiffs/login.html","text/html"); }
 static esp_err_t diag_get (httpd_req_t* r){ if(!require_role(r,ROLE_DIAG))return ESP_FAIL; return send_file(r,"/spiffs/diag.html","text/html"); }
 static esp_err_t ble_get  (httpd_req_t* r){ if(!require_role(r,ROLE_BLE ))return ESP_FAIL; return send_file(r,"/spiffs/ble.html","text/html"); }
-static esp_err_t admin_get(httpd_req_t* r){ if(!require_role(r,ROLE_ROOT))return ESP_FAIL; return send_file(r,"/spiffs/admin.html","text/html"); }
-static esp_err_t super_user_get(httpd_req_t* r){ if(!require_role(r,ROLE_BLE))return ESP_FAIL; return send_file(r,"/spiffs/super_user.html","text/html"); }
+static esp_err_t admin_get(httpd_req_t* r){ if(!require_role(r,ROLE_BLE))return ESP_FAIL; return send_file(r,"/spiffs/admin.html","text/html"); }
+static esp_err_t super_user_get(httpd_req_t* r){ if(!require_role(r,ROLE_ROOT))return ESP_FAIL; return send_file(r,"/spiffs/super_user.html","text/html"); }
 
 // ÚJ: jelszó módosító oldal kezelője
 // A super user felületből elérhető, ROLE_BLE jogosultság szükséges
