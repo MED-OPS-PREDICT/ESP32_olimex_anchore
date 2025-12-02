@@ -36,32 +36,15 @@
   }
   h1{margin:0;font-size:16px;}
 
-    .wrap{
-      padding:16px;
-      display:grid;
-      gap:14px;
-      max-width:1840px;
-      margin:0 auto;
-    }
+  .wrap{
+    padding:16px;
+    display:grid;
+    gap:14px;
+    max-width:1840px;
+    margin:0 auto;
+  }
 
-    /* maga a kártya: azonos magasság, a tartalom kitölti */
-    .cfg-card{
-      display:flex;
-      flex-direction:column;
-      /*min-height:520px; */                        /* kártya “pontos” magassága */
-    }
-
-    .cfg-card .bd{
-      flex:1 1 auto;
-      overflow:hidden;
-    }
-
-    /* ha azt szeretnéd, hogy a táblák belül görgősek lehessenek: */
-    .cfg-card .table-wrap{
-      /*max-height:380px; */                        /* ízlés szerint állítható */
-      overflow-y:auto;
-    }
-
+  /* kártyák */
   .card{
     background:color-mix(in srgb,var(--panel) 92%,#000 8%);
     border:1px solid rgba(255,255,255,.08);
@@ -74,12 +57,12 @@
   .card .hd{
     display:flex;
     align-items:center;
-    justify-content:space-between;
+    gap:12px;
     padding:10px 14px;
     border-bottom:1px solid rgba(255,255,255,.06);
-    gap:8px;
   }
   .card .hd-title{
+    flex:0 0 auto;
     display:flex;
     flex-direction:column;
     gap:2px;
@@ -90,69 +73,60 @@
   }
   .card .bd{padding:12px 14px 14px;}
 
-  .cfg-grid{
-    display:grid;
-    gap:14px;
-    grid-template-columns:repeat(auto-fit,minmax(380px,1fr));
+  /* státuszsor: bal cím, középen jelzők, jobbra gombok */
+  .status-pills{
+    flex:1 1 auto;
+    display:flex;
+    flex-wrap:wrap;
+    justify-content:center;
+    align-items:center;
+    gap:6px;
+  }
+  .toolbar{
+    flex:0 0 auto;
+    display:flex;
+    flex-wrap:wrap;
+    gap:8px;
+    align-items:center;
+    justify-content:flex-end;
   }
 
+  /* visszajelző “tabletták” */
+  .pill{
+    display:inline-block;
+    padding:2px 7px;
+    border-radius:999px;
+    font-size:11px;
+  }
+  .ok{background:rgba(25,195,125,.2);color:#9ce7c9;}
+  .warn{background:rgba(255,176,32,.2);color:#ffd79b;}
+  .err{background:rgba(255,93,93,.18);color:#ffc3c3;}
 
-    .anchor-status{
-      margin-top:6px;
-      font-size:13px;
-      color:var(--muted);
-    }
-    .anchor-status.ok   { color:var(--ok); }
-    .anchor-status.warn { color:var(--warn); }
-    .anchor-status.err  { color:var(--err); }
+  /* Anchor státusz egyedi stílusa – szintén pill szerű */
+  .anchor-status{
+    display:inline-flex;
+    align-items:center;
+    padding:2px 10px;
+    border-radius:999px;
+    font-size:11px;
+    background:rgba(255,255,255,.03);
+    color:var(--muted);
+    white-space:nowrap;
+  }
+  .anchor-status.ok{
+    background:rgba(25,195,125,.18);
+    color:#9ce7c9;
+  }
+  .anchor-status.warn{
+    background:rgba(255,176,32,.18);
+    color:#ffd79b;
+  }
+  .anchor-status.err{
+    background:rgba(255,93,93,.18);
+    color:#ffc3c3;
+  }
 
-    /* ===== Kapcsolati állapot sor ===== */
-    .status-wrap{
-      display:flex;
-      flex-direction:column;
-      align-items:flex-end;
-      gap:4px;
-      min-width:360px;              /* hogy ne törjön szét túl hamar */
-    }
-    .status-pills{
-      display:flex;
-      flex-wrap:wrap;
-      gap:6px;
-      justify-content:flex-end;
-    }
-    /* Anchor állapot – „pill” kinézetben */
-    .anchor-status{
-      display:inline-flex;
-      align-items:center;
-      padding:2px 10px;
-      border-radius:999px;
-      font-size:11px;
-      background:rgba(255,255,255,.03);
-      color:var(--muted);
-      white-space:nowrap;
-    }
-    .anchor-status.ok{
-      background:rgba(25,195,125,.18);
-      color:#9ce7c9;
-    }
-    .anchor-status.warn{
-      background:rgba(255,176,32,.18);
-      color:#ffd79b;
-    }
-    .anchor-status.err{
-      background:rgba(255,93,93,.18);
-      color:#ffc3c3;
-    }
-
-    @media (max-width: 900px){
-      .status-wrap{
-        align-items:flex-start;
-        min-width:0;
-      }
-      .status-pills{
-        justify-content:flex-start;
-      }
-    }
+  /* gombok */
   .btn{
     appearance:none;
     border:0;
@@ -172,36 +146,30 @@
   }
   .btn:disabled{opacity:.6;cursor:default;}
 
-  .toolbar{
+  /* konfigurációs kártyák rácsban */
+  .cfg-grid{
+    display:grid;
+    gap:14px;
+    grid-template-columns:repeat(auto-fit,minmax(380px,1fr));
+  }
+  .cfg-card{
     display:flex;
-    flex-wrap:wrap;
-    gap:8px;
-    align-items:center;
-    justify-content:flex-end;
+    flex-direction:column;
+  }
+  .cfg-card .bd{
+    flex:1 1 auto;
+    overflow:hidden;
+  }
+  .cfg-card .table-wrap{
+    overflow-y:auto;
   }
 
+  /* űrlapok és táblázatok */
   .form-grid{
     display:grid;
     grid-template-columns:160px minmax(0,1fr);
     gap:6px 10px;
   }
-
-  .pill{
-    display:inline-block;
-    padding:2px 7px;
-    border-radius:999px;
-    font-size:11px;
-  }
-  .ok{background:rgba(25,195,125,.2);color:#9ce7c9;}
-  .warn{background:rgba(255,176,32,.2);color:#ffd79b;}
-  .err{background:rgba(255,93,93,.18);color:#ffc3c3;}
-
-  .mono{
-    font-family:ui-monospace,Menlo,Consolas,monospace;
-    font-size:12px;
-  }
-  .muted{color:var(--muted);}
-
   .inp{
     width:100%;
     padding:7px 9px;
@@ -224,7 +192,6 @@
     width:100%;
     overflow-x:auto;
   }
-
   table{
     width:100%;
     border-collapse:collapse;
@@ -241,63 +208,64 @@
     text-align:left;
     font-weight:600;
   }
-
-    /* alapértelmezett arányok – ha máshol is használsz cfg-table-t */
-    .cfg-table col.col-key  { width:45%; }
-    .cfg-table col.col-esp  { width:15%; }
-    .cfg-table col.col-dwm  { width:15%; }
-    .cfg-table col.col-new  { width:25%; }
-
-    /* 1. kártya: közös (ESP + DWM) – itt legyen széles a kulcs, két vékony érték, közepes új érték */
-    #tblBase col.col-key  { width:28%; }
-    #tblBase col.col-esp  { width:15%; }
-    #tblBase col.col-dwm  { width:15%; }
-    #tblBase col.col-new  { width:32%; }
-
-    /* 2. kártya: ESP konfiguráció – Kulcs nagy, ESP közepes, Új érték nagyobb */
-    #tblIps  col.col-key  { width:40%; }
-    #tblIps  col.col-esp  { width:25%; }
-    #tblIps  col.col-new  { width:35%; }
-
-    /* 3. kártya: DWM konfiguráció – Kulcs közepes, DWM közepes, Új érték nagyobb */
-    #tblSync col.col-key,
-    #tblPhy  col.col-key  { width:40%; }
-
-    #tblSync col.col-dwm,
-    #tblPhy  col.col-dwm  { width:20%; }
-
-    #tblSync col.col-new,
-    #tblPhy  col.col-new  { width:40%; }
-
+  /* alapértelmezett arányok */
+  .cfg-table col.col-key  { width:45%; }
+  .cfg-table col.col-esp  { width:15%; }
+  .cfg-table col.col-dwm  { width:15%; }
+  .cfg-table col.col-new  { width:25%; }
+  /* specifikus beállítások (igény szerint módosíthatók) */
+  #tblBase col.col-key  { width:28%; }
+  #tblBase col.col-esp  { width:15%; }
+  #tblBase col.col-dwm  { width:15%; }
+  #tblBase col.col-new  { width:32%; }
+  #tblIps  col.col-key  { width:40%; }
+  #tblIps  col.col-esp  { width:25%; }
+  #tblIps  col.col-new  { width:35%; }
+  #tblSync col.col-key,
+  #tblPhy  col.col-key  { width:40%; }
+  #tblSync col.col-dwm,
+  #tblPhy  col.col-dwm  { width:20%; }
+  #tblSync col.col-new,
+  #tblPhy  col.col-new  { width:40%; }
   #tblIps td.mono{
     white-space: normal;
     word-break: break-all;
   }
 
+  .mono{
+    font-family:ui-monospace,Menlo,Consolas,monospace;
+    font-size:12px;
+  }
+  .muted{color:var(--muted);}
+
   #log{
     white-space: pre-wrap;
     word-break: break-all;
-    height: 220px;
-    max-height: 220px;
-    overflow: auto;
+    height:220px;
+    max-height:220px;
+    overflow:auto;
   }
 
-    #warn {
-      display: none !important;
-      margin: 0 !important;
-      padding: 0 !important;
-      border: 0 !important;
-      height: 0 !important;
-      background: transparent !important;
-    }
+  #warn {
+    display:none !important;
+    margin:0 !important;
+    padding:0 !important;
+    border:0 !important;
+    height:0 !important;
+    background:transparent !important;
+  }
 
-  @media (max-width: 900px){
+  /* mobil nézet */
+  @media (max-width:900px){
     .wrap{padding:10px;}
     header{flex-direction:column;align-items:flex-start;gap:6px;}
     .form-grid{grid-template-columns:120px minmax(0,1fr);}
     .cfg-table col.col-key{width:170px;}
+    /* státusz pillák balra igazítva kis kijelzőn */
+    .status-pills{justify-content:flex-start;}
   }
 </style>
+
 </head>
 <body>
 <header>
@@ -307,33 +275,27 @@
 </header>
 
 <div class="wrap">
-    <!-- DWM kapcsolat kártya – teljes szélesség -->
     <section class="card full">
-      <div class="hd">
-        <div class="hd-title">
-          <span>Kapcsolati állapot</span>
-          <small>BLE + IP célok elérhetősége</small>
-        </div>
-
-        <div class="status-wrap">
+        <div class="hd">
+          <div class="hd-title">
+            <span>Kapcsolati állapot</span>
+            <small>BLE + IP célok elérhetősége</small>
+          </div>
+          <!-- Minden jelző egyetlen flex sorban -->
           <div class="status-pills">
             <span id="pillBle"  class="pill warn">BLE: ismeretlen</span>
             <span id="pillEth"  class="pill warn">ETH: ismeretlen</span>
             <span id="pillZone" class="pill warn">Zóna vezérlő: ismeretlen</span>
             <span id="pillMain" class="pill warn">Fő szerver: ismeretlen</span>
             <span id="pillServ" class="pill warn">Service: ismeretlen</span>
+            <span id="anchorStatus" class="anchor-status warn">Anchor állapot: ismeretlen</span>
           </div>
-          <div id="anchorStatus" class="anchor-status warn">
-            Anchor állapot: ismeretlen
-          </div>
-        </div>
-        <div class="toolbar">
+          <div class="toolbar">
             <button class="btn ghost" id="btnToStats">Statisztika</button>
             <button class="btn ghost" id="btnRebootEsp">Újraindítás</button>
+          </div>
         </div>
-      </div>
-    </div>
-  </section>
+    </section>
 
   <!-- Konfigurációs kártyák rácsban -->
   <div class="cfg-grid">
