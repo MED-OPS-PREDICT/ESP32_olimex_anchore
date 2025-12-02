@@ -30,6 +30,33 @@ typedef struct {
     uint32_t err_last;
 } link_stats_t;
 
+#define MAX_LOG_ITEMS 10
+
+typedef struct {
+    uint64_t ts_ms;      // amikor az ESP megkapta
+    uint32_t anchor_id;
+    uint32_t tag_id;
+    uint8_t  sync_seq;
+    uint8_t  tag_seq;
+    uint8_t  batt_pct;
+    uint64_t uwb_ts;
+} tag_log_t;
+
+typedef struct {
+    uint64_t ts_ms;
+    uint8_t  status;
+    uint32_t uptime_ms;
+    uint16_t sync_ms;
+} hb_log_t;
+
+static tag_log_t s_tag_log[MAX_LOG_ITEMS];
+static int       s_tag_cnt = 0;
+static int       s_tag_head = 0;
+
+static hb_log_t  s_hb_log[MAX_LOG_ITEMS];
+static int       s_hb_cnt = 0;
+static int       s_hb_head = 0;
+
 static link_stats_t g_ble_stats = {0};
 static link_stats_t g_eth_stats = {0};
 static uint64_t     g_last_stats_ms = 0;   // utolsó /api/stats lekérés ideje (ms)
@@ -107,6 +134,37 @@ static float cpu_load_sample(void)
 
     if (used == 0) return 0.0f;
     return (float)(sum / (double)used);
+}
+
+void web_stats_log_tag(uint32_t anchor_id, uint32_t tag_id,
+                       uint8_t sync_seq, uint8_t tag_seq,
+                       uint8_t batt_pct, uint64_t uwb_ts)
+{
+    uint64_t now_ms = esp_timer_get_time() / 1000ULL;
+    int i = s_tag_head;
+    s_tag_log[i].ts_ms    = now_ms;
+    s_tag_log[i].anchor_id= anchor_id;
+    s_tag_log[i].tag_id   = tag_id;
+    s_tag_log[i].sync_seq = sync_seq;
+    s_tag_log[i].tag_seq  = tag_seq;
+    s_tag_log[i].batt_pct = batt_pct;
+    s_tag_log[i].uwb_ts   = uwb_ts;
+
+    s_tag_head = (i + 1) % MAX_LOG_ITEMS;
+    if (s_tag_cnt < MAX_LOG_ITEMS) s_tag_cnt++;
+}
+
+void web_stats_log_hb(uint8_t status, uint32_t uptime_ms, uint16_t sync_ms)
+{
+    uint64_t now_ms = esp_timer_get_time() / 1000ULL;
+    int i = s_hb_head;
+    s_hb_log[i].ts_ms   = now_ms;
+    s_hb_log[i].status  = status;
+    s_hb_log[i].uptime_ms = uptime_ms;
+    s_hb_log[i].sync_ms = sync_ms;
+
+    s_hb_head = (i + 1) % MAX_LOG_ITEMS;
+    if (s_hb_cnt < MAX_LOG_ITEMS) s_hb_cnt++;
 }
 
 /* =========================
@@ -241,7 +299,7 @@ static esp_err_t web_stats_api(httpd_req_t *req)
     g_eth_stats.err_last = g_eth_stats.err_total;
     g_last_stats_ms      = now_ms;
 
-    char buf[1024];
+    char buf[4096];
     int n = snprintf(buf, sizeof(buf),
         "{"
           "\"ts\":%" PRIu64 ","
@@ -323,6 +381,49 @@ static esp_err_t web_stats_api(httpd_req_t *req)
         eth_kpi.tx_total,
         eth_kpi.err_total
     );
+
+    // last_tag tömb
+    n += snprintf(buf + n, sizeof(buf) - n, ",\"last_tag\":[");
+    int first = 1;
+    int cnt = s_tag_cnt;
+    int idx = (s_tag_head - cnt + MAX_LOG_ITEMS) % MAX_LOG_ITEMS;
+    for (int k = 0; k < cnt; ++k) {
+        const tag_log_t *t = &s_tag_log[idx];
+        idx = (idx + 1) % MAX_LOG_ITEMS;
+
+        n += snprintf(buf + n, sizeof(buf) - n,
+            "%s{\"ts\":%" PRIu64 ",\"anchor\":%" PRIu32 ",\"tag\":%" PRIu32
+            ",\"sync\":%u,\"seq\":%u,\"batt\":%u,\"uwb_ts\":%" PRIu64 "}",
+            first ? "" : ",",
+            (unsigned long long)t->ts_ms,
+            t->anchor_id,
+            t->tag_id,
+            t->sync_seq,
+            t->tag_seq,
+            t->batt_pct,
+            (unsigned long long)t->uwb_ts);
+        first = 0;
+    }
+    // last_hb tömb
+    n += snprintf(buf + n, sizeof(buf) - n, "],\"last_hb\":[");
+    first = 1;
+    cnt = s_hb_cnt;
+    idx = (s_hb_head - cnt + MAX_LOG_ITEMS) % MAX_LOG_ITEMS;
+    for (int k = 0; k < cnt; ++k) {
+        const hb_log_t *h = &s_hb_log[idx];
+        idx = (idx + 1) % MAX_LOG_ITEMS;
+
+        n += snprintf(buf + n, sizeof(buf) - n,
+            "%s{\"ts\":%" PRIu64 ",\"status\":%u,"
+            "\"uptime_ms\":%" PRIu32 ",\"sync_ms\":%u}",
+            first ? "" : ",",
+            (unsigned long long)h->ts_ms,
+            h->status,
+            h->uptime_ms,
+            h->sync_ms);
+        first = 0;
+    }
+    n += snprintf(buf + n, sizeof(buf) - n, "]}\n");
 
     if (n < 0) {
         return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "fmt error");

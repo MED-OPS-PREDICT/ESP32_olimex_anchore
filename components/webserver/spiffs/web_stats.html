@@ -420,58 +420,60 @@
     </div>
   </section>
 
-  <!-- Alsó rács: utolsó BLE / ETH csomagok
-  <div class="grid-bottom">
-    <section class="card">
-      <div class="hd">
-        <div class="hd-title">
-          <span>BLE – utolsó csomagok</span>
-          <small>Pontosan beérkező adatok (BLE link)</small>
+  <!-- Alsó rács: utolsó BLE / ETH csomagok -->
+    <div class="grid-bottom">
+      <section class="card">
+        <div class="hd">
+          <div class="hd-title">
+            <span>TAG – utolsó üzenetek</span>
+            <small>BLE-n bejövő UWB TAG csomagok</small>
+          </div>
         </div>
-      </div>
-      <div class="bd">
-        <div class="sec-title">Utolsó N BLE csomag</div>
-        <div class="table-wrap">
-          <table id="tblBle">
-            <thead>
-              <tr>
-                <th>Idő</th>
-                <th>RSSI / minőség</th>
-                <th>Hossz (byte)</th>
-                <th>Meta</th>
-              </tr>
-            </thead>
-            <tbody></tbody>
-          </table>
+        <div class="bd">
+          <div class="sec-title">Utolsó 10 TAG üzenet</div>
+          <div class="table-wrap">
+            <table id="tblTag">
+              <thead>
+                <tr>
+                  <th>Idő</th>
+                  <th>Tag ID</th>
+                  <th>Anchor ID</th>
+                  <th>Sync / Seq</th>
+                  <th>Akku</th>
+                  <th>UWB ts</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
         </div>
-      </div>
-    </section>
+      </section>
 
-    <section class="card">
-      <div class="hd">
-        <div class="hd-title">
-          <span>Ethernet – utolsó csomagok</span>
-          <small>Pontosan beérkező adatok (LAN / IP)</small>
+      <section class="card">
+        <div class="hd">
+          <div class="hd-title">
+            <span>HB – utolsó üzenetek</span>
+            <small>Heartbeat TLV-k (STATUS / UPTIME / SYNC)</small>
+          </div>
         </div>
-      </div>
-      <div class="bd">
-        <div class="sec-title">Utolsó N ETH csomag</div>
-        <div class="table-wrap">
-          <table id="tblEth">
-            <thead>
-              <tr>
-                <th>Idő</th>
-                <th>Forrás</th>
-                <th>Hossz (byte)</th>
-                <th>Meta</th>
-              </tr>
-            </thead>
-            <tbody></tbody>
-          </table>
+        <div class="bd">
+          <div class="sec-title">Utolsó 10 HB üzenet</div>
+          <div class="table-wrap">
+            <table id="tblHb">
+              <thead>
+                <tr>
+                  <th>Idő</th>
+                  <th>Status</th>
+                  <th>Uptime</th>
+                  <th>Sync (ms)</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
         </div>
-      </div>
-    </section>
-  </div>-->
+      </section>
+    </div>
 
 </div>
 
@@ -858,52 +860,58 @@ function startStatusPolling(){
 }
 
 function updateLastTables(stat){
-  const tbBle = document.querySelector('#tblBle tbody');
-  const tbEth = document.querySelector('#tblEth tbody');
-  if(tbBle) tbBle.innerHTML = '';
-  if(tbEth) tbEth.innerHTML = '';
+  const tbTag = document.querySelector('#tblTag tbody');
+  const tbHb  = document.querySelector('#tblHb tbody');
+  if (tbTag) tbTag.innerHTML = '';
+  if (tbHb)  tbHb.innerHTML  = '';
 
-  const lastBle = Array.isArray(stat.last_ble) ? stat.last_ble : [];
-  const lastEth = Array.isArray(stat.last_eth) ? stat.last_eth : [];
+  const lastTag = Array.isArray(stat.last_tag) ? stat.last_tag : [];
+  const lastHb  = Array.isArray(stat.last_hb)  ? stat.last_hb  : [];
 
-  const makeRowBle = r => {
+  const makeRowTag = r => {
     const t   = fmtTime(r.ts ?? 0);
-    const rssi= (r.rssi !== undefined) ? (r.rssi + ' dBm') : '–';
-    const len = (r.len !== undefined) ? r.len : '–';
-    const meta= r.meta || '';
-
-    const metaHtml = meta
-      ? '<span class="pill-small mono">' + meta + '</span>'
-      : '';
+    const tag = (r.tag   != null)
+      ? '0x' + r.tag.toString(16).padStart(8, '0')
+      : '–';
+    const anc = (r.anchor != null)
+      ? '0x' + r.anchor.toString(16).padStart(8, '0')
+      : '–';
+    const syncSeq = (r.sync ?? '–') + ' / ' + (r.seq ?? '–');
+    const batt = (r.batt != null) ? (r.batt + ' %') : '–';
+    const uwb  = (r.uwb_ts != null) ? String(r.uwb_ts) : '–';
 
     return `<tr>
       <td class="mono">${t}</td>
-      <td class="mono">${rssi}</td>
-      <td class="mono">${len}</td>
-      <td>${metaHtml}</td>
+      <td class="mono">${tag}</td>
+      <td class="mono">${anc}</td>
+      <td class="mono">${syncSeq}</td>
+      <td class="mono">${batt}</td>
+      <td class="mono">${uwb}</td>
     </tr>`;
   };
 
-  const makeRowEth = r => {
+  const makeRowHb = r => {
     const t   = fmtTime(r.ts ?? 0);
-    const src = r.src || '–';
-    const len = (r.len !== undefined) ? r.len : '–';
-    const meta= r.meta || '';
-
-    const metaHtml = meta
-      ? '<span class="pill-small mono">' + meta + '</span>'
-      : '';
+    const st  = (r.status != null)
+      ? '0x' + r.status.toString(16).padStart(2, '0')
+      : '–';
+    const upS = (r.uptime_ms != null)
+      ? fmtSeconds(r.uptime_ms / 1000)
+      : '–';
+    const sync = (r.sync_ms != null)
+      ? r.sync_ms + ' ms'
+      : '–';
 
     return `<tr>
       <td class="mono">${t}</td>
-      <td class="mono">${src}</td>
-      <td class="mono">${len}</td>
-      <td>${metaHtml}</td>
+      <td class="mono">${st}</td>
+      <td class="mono">${upS}</td>
+      <td class="mono">${sync}</td>
     </tr>`;
   };
 
-  if(tbBle) tbBle.innerHTML = lastBle.map(makeRowBle).join('');
-  if(tbEth) tbEth.innerHTML = lastEth.map(makeRowEth).join('');
+  if (tbTag) tbTag.innerHTML = lastTag.map(makeRowTag).join('');
+  if (tbHb)  tbHb.innerHTML  = lastHb.map(makeRowHb).join('');
 }
 
 // ===== /api/stats lekérés =====

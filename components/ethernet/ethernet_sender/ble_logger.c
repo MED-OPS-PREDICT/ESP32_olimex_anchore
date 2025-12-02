@@ -159,6 +159,9 @@ void uwb_notify_cb(const uint8_t *data, uint16_t len, bool from_cfg)
                      (uint32_t)uptime,
                      (uint32_t)sync_ms);
             aes_sender_send_line(line);
+
+            web_stats_log_hb(status, uptime, sync_ms);
+
             return;
         }
         return;
@@ -176,6 +179,10 @@ void uwb_notify_cb(const uint8_t *data, uint16_t len, bool from_cfg)
             ESP_LOGW(TAG_UWB, "prefix=0x%02X != 0xAB", pkt.prefix);
             return;
         }
+
+        web_stats_log_tag(pkt.anchor_id, pkt.tag_id,
+                          pkt.sync_seq, pkt.tag_seq,
+                          pkt.batt_pct, pkt.timestamp);  // ÚJ
 
         ESP_LOGI(TAG_UWB,
                  "UWB: ver=%u sync=%u tag_seq=%u batt=%u%% anchor=0x%08" PRIX32
