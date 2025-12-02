@@ -242,12 +242,24 @@ async function login(){
       body: JSON.stringify({user, pass})
     });
     if(!r.ok){
-      msg.textContent='Hibás felhasználónév vagy jelszó.';
+      msg.textContent = 'Hibás felhasználónév vagy jelszó.';
       return;
     }
-    window.location.href = '/super_user.html';
-  }catch(e){
-    msg.textContent='Hálózati hiba.';
+
+    // a szerver most már role mezőt is visszaküld
+    const j = await r.json();
+
+    // itt döntünk a szerepkör alapján
+    if (j.role === 'diag') {
+      window.location.href = '/diag.html';
+    } else if (j.role === 'admin') {
+      window.location.href = '/admin.html';
+    } else {
+      // root vagy egyéb -> superuser oldal
+      window.location.href = '/super_user.html';
+    }
+  } catch(e) {
+    msg.textContent = 'Hálózati hiba.';
   }
 }
 

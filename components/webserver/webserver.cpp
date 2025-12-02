@@ -226,20 +226,22 @@ static esp_err_t auth_login_post(httpd_req_t* req){
     std::vector<char> body(len + 1, 0);
     int off = 0;
     while (off < len) {
-        int r = httpd_req_recv(req, body.data() + off, len - off);
-        if (r <= 0) return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "recv");
-        off += r;
+        int rcv = httpd_req_recv(req, body.data() + off, len - off);
+        if (rcv <= 0) return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "recv");
+        off += rcv;
     }
     ESP_LOGI(TAG, "login body: %s", body.data());
 
     char ctype[64] = {0};
-    if (httpd_req_get_hdr_value_str(req, "Content-Type", ctype, sizeof(ctype)) != ESP_OK) ctype[0]=0;
+    if (httpd_req_get_hdr_value_str(req, "Content-Type", ctype, sizeof(ctype)) != ESP_OK) {
+        ctype[0] = 0;
+    }
 
     auto trim = [](std::string s) -> std::string {
         size_t a = s.find_first_not_of(" \t\r\n\"");
         size_t b = s.find_last_not_of(" \t\r\n\"");
         if (a == std::string::npos) {
-            return std::string();
+            return {};
         }
         return s.substr(a, b - a + 1);
     };
@@ -247,10 +249,15 @@ static esp_err_t auth_login_post(httpd_req_t* req){
     std::string user, pass;
 
     auto find_json = [&](const char* key)->std::string{
-        const char* k = strstr(body.data(), key); if (!k) return {};
-        k = strchr(k, ':'); if (!k) return {}; ++k;
-        const char* p = k; while (*p==' '||*p=='\t'||*p=='\"') ++p;
-        const char* q = p; while (*q && *q!='\"' && *q!=',' && *q!='}') ++q;
+        const char* k = strstr(body.data(), key);
+        if (!k) return {};
+        k = strchr(k, ':');
+        if (!k) return {};
+        ++k;
+        const char* p = k;
+        while (*p==' ' || *p=='\t' || *p=='\"') ++p;
+        const char* q = p;
+        while (*q && *q!='\"' && *q!=',' && *q!='}') ++q;
         return std::string(p, q - p);
     };
 
@@ -261,21 +268,29 @@ static esp_err_t auth_login_post(httpd_req_t* req){
             else if (*s == '%' && isxdigit((unsigned char)s[1]) && isxdigit((unsigned char)s[2])) {
                 int hi = isdigit((unsigned char)s[1]) ? s[1]-'0' : 10 + (tolower((unsigned char)s[1])-'a');
                 int lo = isdigit((unsigned char)s[2]) ? s[2]-'0' : 10 + (tolower((unsigned char)s[2])-'a');
-                out.push_back((char)((hi<<4)|lo)); s+=2;
-            } else out.push_back(*s);
+                out.push_back((char)((hi<<4)|lo));
+                s += 2;
+            } else {
+                out.push_back(*s);
+            }
         }
         return out;
     };
     auto get_form = [&](const char* key)->std::string{
         std::string k = std::string(key) + "=";
-        const char* p = strstr(body.data(), k.c_str()); if (!p) return {};
-        p += k.size(); const char* q = p; while (*q && *q != '&') ++q;
+        const char* p = strstr(body.data(), k.c_str());
+        if (!p) return {};
+        p += k.size();
+        const char* q = p;
+        while (*q && *q != '&') ++q;
         return url_decode(std::string(p, q - p).c_str());
     };
 
+    // Content‑Type kisbetűsítése a könnyebb kereséshez
     std::string cts(ctype);
     for (auto& ch : cts) ch = (char)tolower((unsigned char)ch);
 
+    // JSON vagy form-data esetén a megfelelő mezőket olvassuk ki
     if (cts.find("application/json") != std::string::npos || strchr(body.data(), '{')) {
         user = trim(find_json("\"user\""));
         pass = trim(find_json("\"pass\""));
@@ -284,26 +299,48 @@ static esp_err_t auth_login_post(httpd_req_t* req){
         pass = trim(get_form("pass"));
     }
 
-    if (user.empty() || pass.empty()) return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "bad format");
+    if (user.empty() || pass.empty()) {
+        return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "bad format");
+    }
 
-    user_role_t r = check_user(user.c_str(), pass.c_str());
-    if (r == ROLE_NONE) return httpd_resp_send_err(req, HTTPD_401_UNAUTHORIZED, "bad creds");
+    // hitelesítés
+    user_role_t role = check_user(user.c_str(), pass.c_str());
+    if (role == ROLE_NONE) {
+        return httpd_resp_send_err(req, HTTPD_401_UNAUTHORIZED, "bad creds");
+    }
 
-    char sid[33]; mk_sid(sid);
+    // új session létrehozása
+    char sid[33];
+    mk_sid(sid);
     uint32_t now = (uint32_t)(esp_timer_get_time()/1000000ULL);
     int idx = -1;
-    for (int i = 0; i < (int)(sizeof(g_sess)/sizeof(g_sess[0])); ++i) if (g_sess[i].sid[0]==0){ idx=i; break; }
+    for (int i = 0; i < (int)(sizeof(g_sess)/sizeof(g_sess[0])); ++i) {
+        if (g_sess[i].sid[0]==0) { idx = i; break; }
+    }
     if (idx < 0) idx = 0;
 
     memset(&g_sess[idx], 0, sizeof(g_sess[0]));
     strncpy(g_sess[idx].sid, sid, sizeof(g_sess[0].sid)-1);
-    g_sess[idx].role = r;
+    g_sess[idx].role  = role;
     g_sess[idx].exp_s = now + 86400;
 
+    // cookie beállítása
     std::string cookie = std::string("SID=")+sid+"; Path=/; HttpOnly; Max-Age=86400";
     httpd_resp_set_hdr(req, "Set-Cookie", cookie.c_str());
+
+    // szerepkör szöveges azonosítása
+    const char* roleName = "";
+    switch (role) {
+        case ROLE_DIAG: roleName = "diag";  break;
+        case ROLE_BLE:  roleName = "admin"; break;
+        case ROLE_ROOT: roleName = "root";  break;
+        default:        roleName = "";      break;
+    }
+
+    // JSON válasz összeállítása
+    std::string resp = std::string("{\"ok\":true,\"role\":\"") + roleName + "\"}\n";
     httpd_resp_set_type(req, "application/json");
-    return httpd_resp_sendstr(req, "{\"ok\":true}\n");
+    return httpd_resp_sendstr(req, resp.c_str());
 }
 
 /* ================= ESP config tükör az UI-hoz ================= */
