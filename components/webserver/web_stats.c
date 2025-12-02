@@ -30,7 +30,7 @@ typedef struct {
     uint32_t err_last;
 } link_stats_t;
 
-#define MAX_LOG_ITEMS 10
+#define MAX_LOG_ITEMS 20
 
 typedef struct {
     uint64_t ts_ms;      // amikor az ESP megkapta
@@ -346,7 +346,7 @@ static esp_err_t web_stats_api(httpd_req_t *req)
             "\"tx_total\":%" PRIu32 ","
             "\"err_total\":%" PRIu32
           "}"
-        "}",
+        ,
         (unsigned long long)uptime_sec,          // ts
         (unsigned long long)uptime_ms,
         (unsigned long long)uptime_sec,

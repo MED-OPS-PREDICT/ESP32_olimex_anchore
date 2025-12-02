@@ -869,49 +869,40 @@ function updateLastTables(stat){
   const lastHb  = Array.isArray(stat.last_hb)  ? stat.last_hb  : [];
 
   const makeRowTag = r => {
-    const t   = fmtTime(r.ts ?? 0);
-    const tag = (r.tag   != null)
-      ? '0x' + r.tag.toString(16).padStart(8, '0')
-      : '–';
-    const anc = (r.anchor != null)
-      ? '0x' + r.anchor.toString(16).padStart(8, '0')
-      : '–';
-    const syncSeq = (r.sync ?? '–') + ' / ' + (r.seq ?? '–');
-    const batt = (r.batt != null) ? (r.batt + ' %') : '–';
-    const uwb  = (r.uwb_ts != null) ? String(r.uwb_ts) : '–';
+    const t       = fmtTime(r.ts_ms ?? r.ts ?? 0); // ha ts ms-ben van
+    const tagId   = (r.tag    !== undefined) ? r.tag    : '–';
+    const anchor  = (r.anchor !== undefined) ? r.anchor : '–';
+    const sync    = (r.sync_ms !== undefined) ? (r.sync_ms + ' ms') : '–';
+    const seq     = (r.seq    !== undefined) ? r.seq    : '–';
+    const batt    = (r.batt   !== undefined) ? (r.batt + ' %') : '–';
+    const uwbTs   = (r.uwb_ts !== undefined) ? r.uwb_ts : '–';
 
     return `<tr>
       <td class="mono">${t}</td>
-      <td class="mono">${tag}</td>
-      <td class="mono">${anc}</td>
-      <td class="mono">${syncSeq}</td>
+      <td class="mono">${tagId}</td>
+      <td class="mono">${anchor}</td>
+      <td class="mono">${sync} / ${seq}</td>
       <td class="mono">${batt}</td>
-      <td class="mono">${uwb}</td>
+      <td class="mono">${uwbTs}</td>
     </tr>`;
   };
 
   const makeRowHb = r => {
-    const t   = fmtTime(r.ts ?? 0);
-    const st  = (r.status != null)
-      ? '0x' + r.status.toString(16).padStart(2, '0')
-      : '–';
-    const upS = (r.uptime_ms != null)
-      ? fmtSeconds(r.uptime_ms / 1000)
-      : '–';
-    const sync = (r.sync_ms != null)
-      ? r.sync_ms + ' ms'
-      : '–';
+    const t     = fmtTime(r.ts_ms ?? r.ts ?? 0);
+    const statS = (r.status    !== undefined) ? r.status    : '–';
+    const upMs  = (r.uptime_ms !== undefined) ? r.uptime_ms : '–';
+    const sync  = (r.sync_ms   !== undefined) ? (r.sync_ms + ' ms') : '–';
 
     return `<tr>
       <td class="mono">${t}</td>
-      <td class="mono">${st}</td>
-      <td class="mono">${upS}</td>
+      <td class="mono">${statS}</td>
+      <td class="mono">${upMs}</td>
       <td class="mono">${sync}</td>
     </tr>`;
   };
 
-  if (tbTag) tbTag.innerHTML = lastTag.map(makeRowTag).join('');
-  if (tbHb)  tbHb.innerHTML  = lastHb.map(makeRowHb).join('');
+  if (tbTag) tbTag.innerHTML = lastTag.slice(-10).map(makeRowTag).join('');
+  if (tbHb)  tbHb.innerHTML  = lastHb.slice(-10).map(makeRowHb).join('');
 }
 
 // ===== /api/stats lekérés =====
