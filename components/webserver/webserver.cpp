@@ -1080,21 +1080,13 @@ esp_err_t webserver_start(){
 
     // Tooltipek JS
     httpd_uri_t super_tooltips_uri = {
-        .uri      = "/super_tooltip.js",
+        .uri      = "/super_tooltips.js",
         .method   = HTTP_GET,
         .handler  = super_tooltips_get,
         .user_ctx = nullptr
     };
     httpd_register_uri_handler(s_http, &super_tooltips_uri);
 
-    // Új: kompatibilitási útvonal a többesszámú /super_tooltips.js betöltéshez
-    httpd_uri_t super_tooltips_pl_uri = {
-        .uri      = "/super_tooltips.js",
-        .method   = HTTP_GET,
-        .handler  = super_tooltips_get,
-        .user_ctx = nullptr
-    };
-    httpd_register_uri_handler(s_http, &super_tooltips_pl_uri);
 
     // Root és catch-all → login  **LEGUTOLSÓNAK**
     httpd_uri_t root{};
