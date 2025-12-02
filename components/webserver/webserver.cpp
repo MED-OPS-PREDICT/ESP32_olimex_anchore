@@ -623,7 +623,7 @@ static bool parse_u8 (const char* body, const char* key, uint8_t&  out){ uint32_
 
 /* ================= /api/config ================= */
 static esp_err_t api_config_get(httpd_req_t* req){
-    if(!require_role(req, ROLE_BLE)) return ESP_FAIL;
+    if(!require_role(req, ROLE_DIAG)) return ESP_FAIL;
     add_cors(req);
     add_no_cache(req);
 
