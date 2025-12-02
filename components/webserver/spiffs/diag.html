@@ -1,7 +1,304 @@
-<!doctype html><meta charset="utf-8">
-<h3>ESP</h3>
-<ul>
-  <li><a href="/diag">Diagnosztika</a></li>
-  <li><a href="/ble-data">BLE adatok</a></li>
-  <li><a href="/admin">Admin</a></li>
-</ul>
+<!doctype html>
+<html lang="hu">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Diag – UWB Anchor</title>
+<style>
+  :root{
+    --bg:#0b1522;
+    --panel:#0e1d2b;
+    --panel2:#0a1825;
+    --muted:#9fb0c7;
+    --txt:#e9f1fb;
+    --acc:#2da8ff;
+    --ok:#19c37d;
+    --warn:#ffb020;
+    --err:#ff5d5d;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    min-height:100vh;
+    background:linear-gradient(180deg,#091321,#0b1522);
+    color:var(--txt);
+    font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,Ubuntu,sans-serif;
+  }
+  header{
+    padding:14px 18px;
+    border-bottom:1px solid rgba(255,255,255,.06);
+    display:flex;
+    gap:12px;
+    align-items:center;
+    justify-content:space-between;
+  }
+  h1{margin:0;font-size:16px;}
+  .wrap{
+    padding:16px;
+    display:grid;
+    gap:14px;
+    max-width:1840px;
+    margin:0 auto;
+  }
+  .card{
+    background:color-mix(in srgb,var(--panel) 92%,#000 8%);
+    border:1px solid rgba(255,255,255,.08);
+    border-radius:16px;
+    box-shadow:0 10px 34px rgba(0,0,0,.35);
+  }
+  .card.full{
+    grid-column:1 / -1;
+  }
+  .card .hd{
+    display:flex;
+    align-items:center;
+    gap:12px;
+    padding:10px 14px;
+    border-bottom:1px solid rgba(255,255,255,.06);
+  }
+  .card .hd-title{
+    flex:0 0 auto;
+    display:flex;
+    flex-direction:column;
+    gap:2px;
+  }
+  .card .hd-title small{
+    font-size:11px;
+    color:var(--muted);
+  }
+  .card .bd{
+    padding:12px 14px 14px;
+  }
+  /* státuszsor: bal cím, középen jelzők, jobbra gombok */
+  .status-pills{
+    flex:1 1 auto;
+    display:flex;
+    flex-wrap:wrap;
+    justify-content:center;
+    align-items:center;
+    gap:6px;
+  }
+  .toolbar{
+    flex:0 0 auto;
+    display:flex;
+    flex-wrap:wrap;
+    gap:8px;
+    align-items:center;
+    justify-content:flex-end;
+  }
+  /* visszajelző “tabletták” */
+  .pill{
+    display:inline-block;
+    padding:2px 7px;
+    border-radius:999px;
+    font-size:11px;
+  }
+  .ok{background:rgba(25,195,125,.2);color:#9ce7c9;}
+  .warn{background:rgba(255,176,32,.2);color:#ffd79b;}
+  .err{background:rgba(255,93,93,.18);color:#ffc3c3;}
+  /* Anchor státusz egyedi stílusa – szintén pill szerű */
+  .anchor-status{
+    display:inline-flex;
+    align-items:center;
+    padding:2px 10px;
+    border-radius:999px;
+    font-size:11px;
+    background:rgba(255,255,255,.03);
+    color:var(--muted);
+    white-space:nowrap;
+  }
+  .anchor-status.ok{
+    background:rgba(25,195,125,.18);
+    color:#9ce7c9;
+  }
+  .anchor-status.warn{
+    background:rgba(255,176,32,.18);
+    color:#ffd79b;
+  }
+  .anchor-status.err{
+    background:rgba(255,93,93,.18);
+    color:#ffc3c3;
+  }
+  /* gombok */
+  .btn{
+    appearance:none;
+    border:0;
+    border-radius:12px;
+    padding:8px 12px;
+    background:linear-gradient(180deg,var(--acc),#57b6ff);
+    color:#00203a;
+    font-weight:700;
+    cursor:pointer;
+    font-size:13px;
+    white-space:nowrap;
+  }
+  .btn.ghost{
+    background:transparent;
+    color:var(--txt);
+    border:1px solid rgba(255,255,255,.18);
+  }
+  .btn:disabled{opacity:.6;cursor:default;}
+  /* egyszerű konfigurációs táblázat */
+  #tblConfig{
+    width:100%;
+    border-collapse:collapse;
+    table-layout:auto;
+    font-size:13px;
+  }
+  #tblConfig th, #tblConfig td{
+    padding:6px 8px;
+    border-top:1px solid rgba(255,255,255,.06);
+    vertical-align:middle;
+  }
+  #tblConfig th{
+    color:var(--muted);
+    text-align:left;
+    font-weight:600;
+  }
+  .mono{ font-family:ui-monospace,Menlo,Consolas,monospace; font-size:12px; }
+  .muted{ color:var(--muted); }
+  #log{
+    white-space:pre-wrap;
+    word-break:break-all;
+    height:220px;
+    max-height:220px;
+    overflow:auto;
+  }
+  /* mobil nézet */
+  @media (max-width:900px){
+    .wrap{padding:10px;}
+    header{flex-direction:column;align-items:flex-start;gap:6px;}
+    .status-pills{justify-content:flex-start;}
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>Diag</h1>
+  <div class="muted">Lekérdezés &amp; statisztika</div>
+  <button class="btn ghost" id="btnLogout">Kilépés</button>
+</header>
+
+<div class="wrap">
+  <!-- Állapot kártya -->
+  <section class="card full">
+    <div class="hd">
+      <div class="hd-title">
+        <span>Kapcsolati állapot</span>
+        <small>BLE + IP célok elérhetősége</small>
+      </div>
+      <div class="status-pills">
+        <span id="pillBle"  class="pill warn">BLE: ismeretlen</span>
+        <span id="pillEth"  class="pill warn">ETH: ismeretlen</span>
+        <span id="pillZone" class="pill warn">Zóna vezérlő: ismeretlen</span>
+        <span id="pillMain" class="pill warn">Fő szerver: ismeretlen</span>
+        <span id="pillServ" class="pill warn">Service: ismeretlen</span>
+        <span id="anchorStatus" class="anchor-status warn">Anchor állapot: ismeretlen</span>
+      </div>
+      <div class="toolbar">
+        <button class="btn ghost" id="btnRefresh">Frissítés</button>
+        <button class="btn ghost" id="btnToStats">Statisztika</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Konfiguráció kártya (read-only) -->
+  <section class="card full">
+    <div class="hd">
+      <div class="hd-title">
+        <span>Eszköz konfiguráció</span>
+        <small>Csak olvasásra</small>
+      </div>
+    </div>
+    <div class="bd">
+      <table id="tblConfig">
+        <thead>
+          <tr><th>Kulcs</th><th>Érték</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- Log kártya -->
+  <section class="card full">
+    <div class="hd">
+      <div>Log</div>
+      <div class="muted">Soros és böngésző</div>
+    </div>
+    <div class="bd mono" id="log"></div>
+  </section>
+</div>
+
+<script>
+// ===== util =====
+const $  = id => document.getElementById(id);
+const qs = s  => document.querySelector(s);
+
+/* log helper */
+function logln(s){
+  const L = $('log');
+  if(L){ L.textContent += s + '\n'; L.scrollTop = L.scrollHeight; }
+  console.log(s);
+}
+
+// ===== pill update =====
+function setPill(id, state, text){
+  const el = $(id);
+  if(!el) return;
+  el.classList.remove('ok','warn','err');
+  if(state) el.classList.add(state);
+  if(typeof text === 'string') el.textContent = text;
+}
+
+// ===== status refresh =====
+async function refreshStatus(){
+  try{
+    const r = await fetch('/api/status',{cache:'no-store'});
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    const s = await r.json();
+    // BLE
+    setPill('pillBle', s.ble_up ? 'ok' : 'err', s.ble_up ? 'BLE: kapcsolódva' : 'BLE: nincs kapcsolat');
+    // ETH
+    setPill('pillEth', s.eth_up ? 'ok' : 'err', s.eth_up ? 'ETH: van IP' : 'ETH: nincs IP');
+    // Zone
+    setPill('pillZone',  s.zone_en    ? 'ok' : 'warn', s.zone_en    ? 'Zóna vezérlő: engedélyezve' : 'Zóna vezérlő: tiltva');
+    // Main
+    setPill('pillMain',  s.main_en    ? 'ok' : 'warn', s.main_en    ? 'Fő szerver: engedélyezve'   : 'Fő szerver: tiltva');
+    // Service
+    setPill('pillServ',  s.service_en ? 'err' : 'ok',  s.service_en ? 'Service: engedélyezve'    : 'Service: tiltva');
+    // Anchor status
+    const as = $('anchorStatus');
+    if(as){ as.textContent = s.hb_text || 'Anchor állapot: ismeretlen'; as.className = 'anchor-status ' + (s.hb_level || 'warn'); }
+  }catch(e){ logln('[STATUS] hiba: '+e.message); }
+}
+
+// ===== config load =====
+async function loadConfig(){
+  try{
+    const r = await fetch('/api/config',{cache:'no-store'});
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    const cfg = await r.json();
+    const tbody = qs('#tblConfig tbody');
+    if(tbody){
+      const rows = Object.entries(cfg).map(([k,v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join('');
+      tbody.innerHTML = rows;
+    }
+  }catch(e){ logln('[CONFIG] hiba: '+e.message); }
+}
+
+// ===== buttons =====
+$('btnRefresh').addEventListener('click', () => { refreshStatus(); loadConfig(); });
+$('btnToStats').addEventListener('click', () => { window.location.href = '/stats'; });
+$('btnLogout').addEventListener('click', () => {
+  document.cookie = 'SID=; Path=/; Max-Age=0;';
+  window.location.href = '/login';
+});
+
+// on load
+refreshStatus();
+loadConfig();
+
+</script>
+</body>
+</html>
