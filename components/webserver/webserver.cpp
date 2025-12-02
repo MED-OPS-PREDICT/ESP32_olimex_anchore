@@ -963,10 +963,10 @@ static esp_err_t api_status_get(httpd_req_t* req){
     return httpd_resp_send(req, buf, n);
 }
 /* ================= Server start/stop ================= */
-esp_err_t webserver_start(){
+esp_err_t webserver_start() {
     if (s_http) return ESP_OK;
 
-    /* 1) NVS betöltés, stb... */
+    // 1) NVS betöltés, cfg szinkronizálás
     bool have_nvs_cfg = esp_cfg_load_from_nvs();
     if (have_nvs_cfg) {
         globals_from_gcfg();
@@ -981,95 +981,135 @@ esp_err_t webserver_start(){
     }
 
     httpd_config_t cfg = HTTPD_DEFAULT_CONFIG();
-    cfg.uri_match_fn = httpd_uri_match_wildcard;
-    cfg.max_uri_handlers = 24;
-    cfg.stack_size = 8192;
-
+    cfg.uri_match_fn    = httpd_uri_match_wildcard;
+    cfg.max_uri_handlers= 24;
+    cfg.stack_size      = 8192;
     ESP_ERROR_CHECK(httpd_start(&s_http, &cfg));
 
-    // BLE bridge
+    // BLE bridge + DWM routeok
     ble_http_bridge_init();
-    http_register_routes(s_http);   // /api/dwm_get
+    http_register_routes(s_http);        // /api/dwm_get és társai
 
-    // *** ITT REGISZTRÁLD A STATS API-T + /stats OLDALT ***
+    // Statisztika API + /stats oldal
     web_stats_init();
-    web_stats_register_handlers(s_http);   // ebben van /api/stats
+    web_stats_register_handlers(s_http); // ebben van /api/stats
 
-    // Pages
-    httpd_uri_t u{};
-    u.method=HTTP_GET;
-    u.uri="/login";            u.handler=login_get;        httpd_register_uri_handler(s_http,&u);
-    u.uri="/diag";             u.handler=diag_get;         httpd_register_uri_handler(s_http,&u);
-    u.uri="/ble-data";         u.handler=ble_get;          httpd_register_uri_handler(s_http,&u);
-    u.uri="/admin";            u.handler=admin_get;        httpd_register_uri_handler(s_http,&u);
-    u.uri="/super_user.html";  u.handler=super_user_get;   httpd_register_uri_handler(s_http,&u);
-    // ÚJ: jelszó oldal
-    u.uri="/passwd";           u.handler=passwd_get;       httpd_register_uri_handler(s_http,&u);
+    // ----- OLDALAK -----
+    httpd_uri_t page{};
+    page.method = HTTP_GET;
 
-    u.method = HTTP_GET;
-    u.uri="/stats";   u.handler=stats_get;  httpd_register_uri_handler(s_http,&u);
+    page.uri = "/login";            page.handler = login_get;       httpd_register_uri_handler(s_http,&page);
+    page.uri = "/diag";             page.handler = diag_get;        httpd_register_uri_handler(s_http,&page);
+    page.uri = "/ble-data";         page.handler = ble_get;         httpd_register_uri_handler(s_http,&page);
+    page.uri = "/admin";            page.handler = admin_get;       httpd_register_uri_handler(s_http,&page);
+    page.uri = "/super_user.html";  page.handler = super_user_get;  httpd_register_uri_handler(s_http,&page);
+    page.uri = "/passwd";           page.handler = passwd_get;      httpd_register_uri_handler(s_http,&page);
 
-    // API GET-ek
-    u.uri="/api/status";       u.handler=api_status_get;   httpd_register_uri_handler(s_http,&u);
+    page.uri = "/stats";            page.handler = stats_get;       httpd_register_uri_handler(s_http,&page);
+    page.uri = "/api/status";       page.handler = api_status_get;  httpd_register_uri_handler(s_http,&page);
 
-    // ÚJ: meta
-    httpd_uri_t get_meta{};
-    get_meta.method = HTTP_GET;
-    get_meta.uri    = "/api/meta";
-    get_meta.handler= api_meta_get;
+    // ----- API GET-ek -----
+    httpd_uri_t get_meta = {
+        .uri      = "/api/meta",
+        .method   = HTTP_GET,
+        .handler  = api_meta_get,
+        .user_ctx = nullptr
+    };
     httpd_register_uri_handler(s_http, &get_meta);
 
-    httpd_uri_t get_cfg{};
-    get_cfg.method=HTTP_GET;
-    get_cfg.uri="/api/config";
-    get_cfg.handler=api_config_get;
-    httpd_register_uri_handler(s_http,&get_cfg);
+    httpd_uri_t get_cfg = {
+        .uri      = "/api/config",
+        .method   = HTTP_GET,
+        .handler  = api_config_get,
+        .user_ctx = nullptr
+    };
+    httpd_register_uri_handler(s_http, &get_cfg);
 
-    // API POST-ok
-    httpd_uri_t post_cfg{};
-    post_cfg.method=HTTP_POST;
-    post_cfg.uri="/api/config";
-    post_cfg.handler=api_config_post;
-    httpd_register_uri_handler(s_http,&post_cfg);
+    // ----- API POST-ok -----
+    httpd_uri_t post_cfg = {
+        .uri      = "/api/config",
+        .method   = HTTP_POST,
+        .handler  = api_config_post,
+        .user_ctx = nullptr
+    };
+    httpd_register_uri_handler(s_http, &post_cfg);
 
-    // AUTH: POST + OPTIONS (preflight)
-    httpd_uri_t auth_post{};
-    auth_post.method=HTTP_POST;
-    auth_post.uri="/auth/login";
-    auth_post.handler=auth_login_post;
-    httpd_register_uri_handler(s_http,&auth_post);
+    httpd_uri_t auth_post = {
+        .uri      = "/auth/login",
+        .method   = HTTP_POST,
+        .handler  = auth_login_post,
+        .user_ctx = nullptr
+    };
+    httpd_register_uri_handler(s_http, &auth_post);
 
-    // Preflight OPTIONS minden érintett útvonalra
-    httpd_uri_t opt{};
-    opt.method=HTTP_OPTIONS;  opt.uri="/auth/login";   opt.handler=options_ok; httpd_register_uri_handler(s_http,&opt);
-    opt.uri="/api/config";    httpd_register_uri_handler(s_http,&opt);
-    opt.uri="/api/status";    httpd_register_uri_handler(s_http,&opt);
-    opt.uri="/api/dwm_get";   httpd_register_uri_handler(s_http,&opt);
-    opt.uri="/api/dwm_last";  httpd_register_uri_handler(s_http,&opt);   // ÚJ
+    // ----- OPTIONS (preflight) útvonalak -----
+    httpd_uri_t opt_auth = {
+        .uri      = "/auth/login",
+        .method   = HTTP_OPTIONS,
+        .handler  = options_ok,
+        .user_ctx = nullptr
+    };
+    httpd_register_uri_handler(s_http, &opt_auth);
 
-    // ÚJ: változó jelszavakhoz szükséges options (preflight)
-    opt.uri="/api/change_password";
-    httpd_register_uri_handler(s_http,&opt);
+    httpd_uri_t opt_cfg = {
+        .uri      = "/api/config",
+        .method   = HTTP_OPTIONS,
+        .handler  = options_ok,
+        .user_ctx = nullptr
+    };
+    httpd_register_uri_handler(s_http, &opt_cfg);
 
-    // Reboot API
+    httpd_uri_t opt_status = {
+        .uri      = "/api/status",
+        .method   = HTTP_OPTIONS,
+        .handler  = options_ok,
+        .user_ctx = nullptr
+    };
+    httpd_register_uri_handler(s_http, &opt_status);
+
+    httpd_uri_t opt_dwm_get = {
+        .uri      = "/api/dwm_get",
+        .method   = HTTP_OPTIONS,
+        .handler  = options_ok,
+        .user_ctx = nullptr
+    };
+    httpd_register_uri_handler(s_http, &opt_dwm_get);
+
+    httpd_uri_t opt_dwm_last = {
+        .uri      = "/api/dwm_last",
+        .method   = HTTP_OPTIONS,
+        .handler  = options_ok,
+        .user_ctx = nullptr
+    };
+    httpd_register_uri_handler(s_http, &opt_dwm_last);
+
+    httpd_uri_t opt_change_pw = {
+        .uri      = "/api/change_password",
+        .method   = HTTP_OPTIONS,
+        .handler  = options_ok,
+        .user_ctx = nullptr
+    };
+    httpd_register_uri_handler(s_http, &opt_change_pw);
+
+    // ----- Egyéb API-k -----
     httpd_uri_t uri_reboot = {
         .uri      = "/api/reboot",
         .method   = HTTP_POST,
         .handler  = api_reboot,
-        .user_ctx = NULL
+        .user_ctx = nullptr
     };
     httpd_register_uri_handler(s_http, &uri_reboot);
 
-    // ÚJ: jelszó módosító API
+    // Jelszó módosító API
     httpd_uri_t uri_pw = {
         .uri      = "/api/change_password",
         .method   = HTTP_POST,
         .handler  = api_change_password,
-        .user_ctx = NULL
+        .user_ctx = nullptr
     };
     httpd_register_uri_handler(s_http, &uri_pw);
 
-    // Super user page
+    // /super alias, átirányítás a super_user.html-re
     httpd_uri_t super_uri = {
         .uri      = "/super",
         .method   = HTTP_GET,
@@ -1078,31 +1118,24 @@ esp_err_t webserver_start(){
     };
     httpd_register_uri_handler(s_http, &super_uri);
 
-    // Tooltipek JS
-    httpd_uri_t super_tooltips_uri = {
-        .uri      = "/super_tooltips.js",
+    // ----- Root és catch-all (legvégül) -----
+    httpd_uri_t root = {
+        .uri      = "/",
         .method   = HTTP_GET,
-        .handler  = super_tooltips_get,
+        .handler  = login_get,
         .user_ctx = nullptr
     };
-    httpd_register_uri_handler(s_http, &super_tooltips_uri);
-
-
-    // Root és catch-all → login  **LEGUTOLSÓNAK**
-    httpd_uri_t root{};
-    root.method  = HTTP_GET;
-    root.uri     = "/";
-    root.handler = login_get;
     httpd_register_uri_handler(s_http, &root);
 
-    httpd_uri_t any{};
-    any.method  = HTTP_GET;
-    any.uri     = "/*";
-    any.handler = login_get;
+    httpd_uri_t any = {
+        .uri      = "/*",
+        .method   = HTTP_GET,
+        .handler  = login_get,
+        .user_ctx = nullptr
+    };
     httpd_register_uri_handler(s_http, &any);
 
-    ESP_LOGI(TAG,"webserver started");
-
+    ESP_LOGI(TAG, "webserver started");
     return ESP_OK;
 }
 
