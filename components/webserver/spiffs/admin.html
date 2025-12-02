@@ -1,0 +1,156 @@
+</style>
+</head>
+<body>
+<header>
+  <h1>Super User</h1>
+  <div class="muted">ESP lekér • DWM lekér • Beállít mindkettő</div>
+  <button class="btn ghost" id="btnLogout">Kijelentkezés</button>
+</header>
+
+<div class="wrap">
+    <!-- DWM kapcsolat kártya – teljes szélesség -->
+    <section class="card full">
+      <div class="hd">
+        <div class="hd-title">
+          <span>Kapcsolati állapot</span>
+          <small>BLE + IP célok elérhetősége</small>
+        </div>
+
+        <div class="status-wrap">
+          <div class="status-pills">
+            <span id="pillBle"  class="pill warn">BLE: ismeretlen</span>
+            <span id="pillEth"  class="pill warn">ETH: ismeretlen</span>
+            <span id="pillZone" class="pill warn">Zóna vezérlő: ismeretlen</span>
+            <span id="pillMain" class="pill warn">Fő szerver: ismeretlen</span>
+            <span id="pillServ" class="pill warn">Service: ismeretlen</span>
+          </div>
+          <div id="anchorStatus" class="anchor-status warn">
+            Anchor állapot: ismeretlen
+          </div>
+        </div>
+        <div class="toolbar">
+            <button class="btn ghost" id="btnToStats">Statisztika</button>
+            <button class="btn ghost" id="btnRebootEsp">Újraindítás</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Konfigurációs kártyák rácsban -->
+  <div class="cfg-grid">
+
+    <!-- Közös (ESP + DWM) -->
+    <section class="card cfg-card">
+      <div class="hd">
+        <div class="hd-title">
+          <span>Közös konfiguráció </span>
+          <small>(ESP + DWM)</small>
+        </div>
+        <div class="toolbar">
+          <button class="btn" id="btnApply">Beállít (ESP + DWM)</button>
+        </div>
+      </div>
+      <div class="bd">
+        <div class="sec-title">Alap paraméterek:</div>
+        <div class="table-wrap">
+          <table id="tblBase" class="cfg-table">
+            <colgroup>
+              <col class="col-key">
+              <col class="col-esp">
+              <col class="col-dwm">
+              <col class="col-new">
+            </colgroup>
+            <thead>
+              <tr><th>Kulcs</th><th>ESP</th><th>DWM</th><th>Új érték</th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div class="muted" style="margin-top:6px">Üres mező nem küldődik.</div>
+      </div>
+    </section>
+
+    <!-- ESP-only -->
+    <section class="card cfg-card">
+      <div class="hd">
+        <div class="hd-title">
+          <span>ESP konfiguráció</span>
+          <small>Ethernet, saját IP, gateway, IPS cél IP-k</small>
+        </div>
+        <div class="toolbar">
+          <button class="btn ghost" id="btnEspGet">LEKÉR ESP</button>
+        </div>
+      </div>
+      <div class="bd">
+        <div class="sec-title">Ethernet és cél IP-k:</div>
+        <div class="table-wrap">
+          <table id="tblIps" class="cfg-table esp-only">
+            <colgroup>
+              <col class="col-key">
+              <col class="col-esp">
+              <col class="col-new">
+            </colgroup>
+            <thead>
+              <tr><th>Kulcs</th><th>ESP</th><th>Új érték</th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- DWM-only -->
+    <section class="card cfg-card">
+      <div class="hd">
+        <div class="hd-title">
+          <span>DWM konfiguráció</span>
+          <small>Szinkron és PHY paraméterek</small>
+        </div>
+        <div class="toolbar">
+          <button class="btn ghost" id="btnDwmGet">LEKÉR DWM</button>
+        </div>
+      </div>
+      <div class="bd">
+        <div class="sec-title">Szinkron:</div>
+        <div class="table-wrap">
+          <table id="tblSync" class="cfg-table dwm-only">
+            <colgroup>
+              <col class="col-key">
+              <col class="col-dwm">
+              <col class="col-new">
+            </colgroup>
+            <thead>
+              <tr><th>Kulcs</th><th>DWM</th><th>Új érték</th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+
+        <div class="sec-title">PHY:</div>
+        <div class="table-wrap">
+          <table id="tblPhy" class="cfg-table dwm-only">
+            <colgroup>
+              <col class="col-key">
+              <col class="col-dwm">
+              <col class="col-new">
+            </colgroup>
+            <thead>
+              <tr><th>Kulcs</th><th>DWM</th><th>Új érték</th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+  </div>
+
+  <!-- Log – teljes szélesség -->
+  <section class="card full">
+    <div class="hd">
+      <div>Log</div>
+      <div class="muted">Soros és böngésző</div>
+    </div>
+    <div class="bd mono" id="log"></div>
+  </section>
+</div>
