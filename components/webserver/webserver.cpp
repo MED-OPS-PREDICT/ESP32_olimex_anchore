@@ -53,11 +53,22 @@ static const char* TAG = "WEB";
 static httpd_handle_t s_http = nullptr;
 
 /* ================= Users + Sessions ================= */
+//
+// A jelszavak módosíthatósága érdekében a felhasználói jelszavakat
+// karaktertömbökben tároljuk. Ez lehetővé teszi, hogy a /api/change_password
+// API futásidőben frissítse a jelszavakat. A struktúra nem const,
+// így a pointerek módosíthatók.
 struct User { const char* u; const char* p; user_role_t r; };
-static const User kUsers[] = {
-    {"diag","diag",ROLE_DIAG},
-    {"admin","admin",ROLE_BLE},
-    {"root","root",ROLE_ROOT},
+
+// Alapértelmezett jelszavak (maximum 32 karakter + null terminátor).
+static char diag_pwd[33]  = "diag";
+static char admin_pwd[33] = "admin";
+static char root_pwd[33]  = "root";
+
+static User kUsers[] = {
+    {"diag", diag_pwd,  ROLE_DIAG},
+    {"admin", admin_pwd, ROLE_BLE},
+    {"root",  root_pwd,  ROLE_ROOT},
     {nullptr,nullptr,ROLE_NONE}
 };
 struct Session { char sid[33]; user_role_t role; uint32_t exp_s; };
@@ -676,6 +687,96 @@ static esp_err_t api_reboot(httpd_req_t* req) {
     return ESP_OK;
 }
 
+/* ================= /api/change_password ================= */
+// Egyszerű API, amely POST JSON formátumban fogadja az új jelszavakat.
+// Például: { "diag": "ujpwd" } vagy { "admin": "pwd", "root": "pwd2" }
+// A mezők opcionálisak: amelyik kulcs nincs jelen, annak a jelszava nem változik.
+// A jelszavak legfeljebb 32 karakter hosszúak lehetnek.
+// A sikeres frissítés után {"ok":true} választ ad vissza.
+static esp_err_t api_change_password(httpd_req_t* req) {
+    // Csak BLE jogosultsággal engedélyezett (BLE = admin user). Root is engedélyezett, mivel nagyobb szerepkör.
+    if (!require_role(req, ROLE_BLE)) return ESP_FAIL;
+
+    add_cors(req);
+    add_no_cache(req);
+
+    int len = req->content_len;
+    if (len <= 0) {
+        return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "empty");
+    }
+
+    std::vector<char> body(len + 1, 0);
+    int off = 0;
+    while (off < len) {
+        int r = httpd_req_recv(req, body.data() + off, len - off);
+        if (r <= 0) {
+            return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "recv");
+        }
+        off += r;
+    }
+
+    // Egyszerű segédfüggvény: megkeresi a megadott JSON kulcsot és visszaadja annak string értékét
+    auto find_json_val = [&](const char* key) -> std::string {
+        const char* k = strstr(body.data(), key);
+        if (!k) return {};
+        k = strchr(k, ':');
+        if (!k) return {};
+        ++k;
+        // hagyjuk ki a szóközöket és idézőjeleket az érték elejéről
+        while (*k == ' ' || *k == '\t') { ++k; }
+        if (*k == '"') ++k; // lépjünk az idézőjel utánra
+        const char* p = k;
+        const char* q = p;
+        while (*q && *q != '"' && *q != ',' && *q != '}') {
+            ++q;
+        }
+        return std::string(p, q - p);
+    };
+
+    bool changed = false;
+    // diag
+    {
+        std::string v = find_json_val("\"diag\"");
+        if (!v.empty()) {
+            size_t n = v.size();
+            if (n >= sizeof(diag_pwd)) n = sizeof(diag_pwd) - 1;
+            memcpy(diag_pwd, v.c_str(), n);
+            diag_pwd[n] = '\0';
+            changed = true;
+        }
+    }
+    // admin
+    {
+        std::string v = find_json_val("\"admin\"");
+        if (!v.empty()) {
+            size_t n = v.size();
+            if (n >= sizeof(admin_pwd)) n = sizeof(admin_pwd) - 1;
+            memcpy(admin_pwd, v.c_str(), n);
+            admin_pwd[n] = '\0';
+            changed = true;
+        }
+    }
+    // root
+    {
+        std::string v = find_json_val("\"root\"");
+        if (!v.empty()) {
+            size_t n = v.size();
+            if (n >= sizeof(root_pwd)) n = sizeof(root_pwd) - 1;
+            memcpy(root_pwd, v.c_str(), n);
+            root_pwd[n] = '\0';
+            changed = true;
+        }
+    }
+
+    // ha semmit nem módosított, 400-as hiba
+    if (!changed) {
+        return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "no fields");
+    }
+
+    httpd_resp_set_type(req, "application/json");
+    return httpd_resp_sendstr(req, "{\"ok\":true}\n");
+}
+
 /* NET, IPS -> g_cfg (UI tükör) */
 static void gcfg_from_globals(void)
 {
@@ -946,6 +1047,10 @@ esp_err_t webserver_start(){
     opt.uri="/api/dwm_get";   httpd_register_uri_handler(s_http,&opt);
     opt.uri="/api/dwm_last";  httpd_register_uri_handler(s_http,&opt);   // ÚJ
 
+    // ÚJ: változó jelszavakhoz szükséges options (preflight)
+    opt.uri="/api/change_password";
+    httpd_register_uri_handler(s_http,&opt);
+
     // Reboot API
     httpd_uri_t uri_reboot = {
         .uri      = "/api/reboot",
@@ -954,6 +1059,15 @@ esp_err_t webserver_start(){
         .user_ctx = NULL
     };
     httpd_register_uri_handler(s_http, &uri_reboot);
+
+    // ÚJ: jelszó módosító API
+    httpd_uri_t uri_pw = {
+        .uri      = "/api/change_password",
+        .method   = HTTP_POST,
+        .handler  = api_change_password,
+        .user_ctx = NULL
+    };
+    httpd_register_uri_handler(s_http, &uri_pw);
 
     // Super user page
     httpd_uri_t super_uri = {
@@ -966,12 +1080,21 @@ esp_err_t webserver_start(){
 
     // Tooltipek JS
     httpd_uri_t super_tooltips_uri = {
-        .uri      = "/super_tooltips.js",
+        .uri      = "/super_tooltip.js",
         .method   = HTTP_GET,
         .handler  = super_tooltips_get,
         .user_ctx = nullptr
     };
     httpd_register_uri_handler(s_http, &super_tooltips_uri);
+
+    // Új: kompatibilitási útvonal a többesszámú /super_tooltips.js betöltéshez
+    httpd_uri_t super_tooltips_pl_uri = {
+        .uri      = "/super_tooltips.js",
+        .method   = HTTP_GET,
+        .handler  = super_tooltips_get,
+        .user_ctx = nullptr
+    };
+    httpd_register_uri_handler(s_http, &super_tooltips_pl_uri);
 
     // Root és catch-all → login  **LEGUTOLSÓNAK**
     httpd_uri_t root{};
