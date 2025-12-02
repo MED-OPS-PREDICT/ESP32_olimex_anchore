@@ -772,42 +772,46 @@ async function refreshStatus() {
           noBleTimer = null;
         }
 
-        // Heartbeat állapot értelmezése a hb_status mező alapján.
-        // A hb_status bitkódot tartalmaz: 1=BLE link, 2=HB notify, 4=PRELOCK, 8=LOCK, stb.
-        const hbCode = Number(s.hb_status);
-        if (Number.isFinite(hbCode)) {
-          const hasBle  = (hbCode & 1) !== 0;
-          const cfgNtf  = (hbCode & 2) !== 0;
-          const prelock = (hbCode & 4) !== 0;
-          const lock    = (hbCode & 8) !== 0;
-          if (!hasBle) {
-            // nincs BLE kapcsolat – ezt a külső BLE rész is kezeli, de itt fallback
-            txt   = 'Nincs BLE kapcsolat az anchorral';
-            level = 'err';
-          } else if (!cfgNtf) {
-            txt   = 'BLE OK, de HB/notify nincs engedélyezve';
-            level = 'warn';
-          } else if (!lock && !prelock) {
-            // nincs UWB SYNC (nem jönnek A/B keretek)
-            txt   = 'Nincs SYNC';
-            level = 'err';
-          } else if (lock && prelock) {
-            // SYNC állapot régi (mindkét bit be van állítva)
-            txt   = 'SYNC régi (WARN)';
-            level = 'warn';
-          } else if (lock) {
-            txt   = 'HB rendben';
-            level = 'ok';
-          } else if (prelock) {
-            txt   = 'SYNC felépülőben';
-            level = 'warn';
+        // Heartbeat állapot értelmezése a szerver által küldött hb_text és hb_level alapján.
+        // A /api/status válasz tartalmazza az anchor_status_to_text() által generált hb_text-et,
+        // valamint hb_level-t (ok/warn/err). Ezeket használjuk a megjelenítésre.
+        if (s.hb_text !== undefined && s.hb_level !== undefined) {
+          txt   = s.hb_text;
+          level = s.hb_level;
+        } else {
+          // Fallback: ha nincs hb_text/hb_level, próbáljuk meg bitkód alapján kitalálni
+          const hbCode = Number(s.hb_status);
+          if (Number.isFinite(hbCode)) {
+            const hasBle  = (hbCode & 1) !== 0;
+            const cfgNtf  = (hbCode & 2) !== 0;
+            const prelock = (hbCode & 4) !== 0;
+            const lock    = (hbCode & 8) !== 0;
+            if (!hasBle) {
+              txt   = 'Nincs BLE kapcsolat az anchorral';
+              level = 'err';
+            } else if (!cfgNtf) {
+              txt   = 'BLE OK, de HB/notify nincs engedélyezve';
+              level = 'warn';
+            } else if (!lock && !prelock) {
+              txt   = 'Nincs SYNC';
+              level = 'err';
+            } else if (lock && prelock) {
+              txt   = 'SYNC régi (WARN)';
+              level = 'warn';
+            } else if (lock) {
+              txt   = 'HB rendben';
+              level = 'ok';
+            } else if (prelock) {
+              txt   = 'SYNC felépülőben';
+              level = 'warn';
+            } else {
+              txt   = `HB státusz: ${hbCode}`;
+              level = 'warn';
+            }
           } else {
-            txt   = `HB státusz: ${hbCode}`;
+            txt   = 'Anchor állapot: ismeretlen';
             level = 'warn';
           }
-        } else {
-          txt   = 'Anchor állapot: ismeretlen';
-          level = 'warn';
         }
       }
 

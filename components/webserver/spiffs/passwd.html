@@ -48,56 +48,149 @@
     width:100%;margin-top:14px;padding:11px 14px;border-radius:14px;border:0;cursor:pointer;
     background:linear-gradient(180deg,var(--accent),var(--accent2));color:#00203a;font-weight:800
   }
+
+  /* Ghost gomb a visszalépéshez */
+  .btn.ghost{
+    background:transparent;
+    color:var(--text);
+    border:1px solid rgba(255,255,255,.18);
+  }
+
+  /* Jelszó mező megjelenítés / elrejtés stílusa */
+  .pwd{position:relative}
+  .pwd input{padding-right:44px}
+  .pwd .toggle{
+    position:absolute;top:50%;right:12px;transform:translateY(-50%);
+    width:36px;height:28px;display:grid;place-items:center;
+    border:1px solid rgba(255,255,255,.18);background:#0a1825;color:#aeb7c6;
+    border-radius:8px;cursor:pointer;padding:0
+  }
+  .pwd .toggle:hover{filter:brightness(1.15)}
+  .pwd .toggle svg{width:18px;height:18px;opacity:.9}
   .foot{color:var(--muted);font-size:11px;text-align:center;margin-top:10px}
 </style>
 </head>
 <body>
   <div class="wrap">
-    <form class="card" onsubmit="event.preventDefault(); changePassword();">
+    <form class="card" onsubmit="event.preventDefault();">
       <h2>Jelszavak módosítása</h2>
+      <!-- Visszalépés gomb -->
+      <div class="row" style="justify-content:flex-end;margin-bottom:12px;">
+        <button type="button" class="btn ghost" onclick="goBack()">Vissza</button>
+      </div>
+
+      <!-- diag felhasználó -->
       <div class="row">
         <div class="col">
           <label for="diag_pwd">diag felhasználó új jelszó</label>
-          <input id="diag_pwd" type="password" placeholder="új jelszó">
+          <div class="pwd">
+            <input id="diag_pwd" type="password" placeholder="új jelszó">
+            <button id="diagToggle" class="toggle" type="button" aria-label="Jelszó megjelenítése" onclick="togglePwdField('diag_pwd','eyeIconDiag')">
+              <svg id="eyeIconDiag" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 5C7 5 2.73 8.11 1 12c1.73 3.89 6 7 11 7s9.27-3.11 11-7c-1.73-3.89-6-7-11-7Z"/>
+                <circle cx="12" cy="12" r="2.5"/>
+              </svg>
+            </button>
+          </div>
+          <button type="button" class="btn" style="margin-top:8px;" onclick="changePasswordUser('diag')">Mentés</button>
         </div>
       </div>
+
+      <!-- admin felhasználó -->
       <div class="row">
         <div class="col">
           <label for="admin_pwd">admin felhasználó új jelszó</label>
-          <input id="admin_pwd" type="password" placeholder="új jelszó">
+          <div class="pwd">
+            <input id="admin_pwd" type="password" placeholder="új jelszó">
+            <button id="adminToggle" class="toggle" type="button" aria-label="Jelszó megjelenítése" onclick="togglePwdField('admin_pwd','eyeIconAdmin')">
+              <svg id="eyeIconAdmin" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 5C7 5 2.73 8.11 1 12c1.73 3.89 6 7 11 7s9.27-3.11 11-7c-1.73-3.89-6-7-11-7Z"/>
+                <circle cx="12" cy="12" r="2.5"/>
+              </svg>
+            </button>
+          </div>
+          <button type="button" class="btn" style="margin-top:8px;" onclick="changePasswordUser('admin')">Mentés</button>
         </div>
       </div>
+
+      <!-- root felhasználó -->
       <div class="row">
         <div class="col">
           <label for="root_pwd">root felhasználó új jelszó</label>
-          <input id="root_pwd" type="password" placeholder="új jelszó">
+          <div class="pwd">
+            <input id="root_pwd" type="password" placeholder="új jelszó">
+            <button id="rootToggle" class="toggle" type="button" aria-label="Jelszó megjelenítése" onclick="togglePwdField('root_pwd','eyeIconRoot')">
+              <svg id="eyeIconRoot" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 5C7 5 2.73 8.11 1 12c1.73 3.89 6 7 11 7s9.27-3.11 11-7c-1.73-3.89-6-7-11-7Z"/>
+                <circle cx="12" cy="12" r="2.5"/>
+              </svg>
+            </button>
+          </div>
+          <button type="button" class="btn" style="margin-top:8px;" onclick="changePasswordUser('root')">Mentés</button>
         </div>
       </div>
-      <button class="btn" type="submit">Mentés</button>
+
       <div class="foot" id="msg"></div>
     </form>
   </div>
 <script>
-async function changePassword(){
-  const diag  = document.getElementById('diag_pwd').value.trim();
-  const admin = document.getElementById('admin_pwd').value.trim();
-  const root  = document.getElementById('root_pwd').value.trim();
+// Visszalépés a super_user oldalra
+function goBack(){
+  window.location.href = "/super_user.html";
+}
+
+// Jelszó módosítása egy felhasználóhoz. A paraméter `user` legyen 'diag', 'admin' vagy 'root'.
+async function changePasswordUser(user){
   const msg   = document.getElementById('msg');
   msg.textContent = '';
+  // lekérjük az adott mező tartalmát
+  const pwdInput = document.getElementById(user + '_pwd');
+  if(!pwdInput) return;
+  const newPwd = pwdInput.value.trim();
+  if(!newPwd){
+    msg.textContent = 'Kérjük add meg a(z) ' + user + ' új jelszavát.';
+    return;
+  }
   try{
-    const body = { diag, admin, root };
+    const body = {};
+    body[user] = newPwd;
     const r = await fetch('/api/change_password', {
       method:'POST',
       headers:{'Content-Type':'application/json'},
       body: JSON.stringify(body)
     });
     if(!r.ok){
-      msg.textContent = 'Hiba a jelszavak módosításakor.';
+      msg.textContent = 'Hiba a jelszó módosításakor ('+user+').';
       return;
     }
-    msg.textContent = 'Jelszavak frissítve.';
+    msg.textContent = user + ' jelszó frissítve.';
+    // ürítsük ki a mezőt
+    pwdInput.value = '';
   }catch(e){
     msg.textContent = 'Hálózati hiba.';
+  }
+}
+
+// Jelszómező típusának váltása és ikon frissítése
+function togglePwdField(inpId, iconId){
+  const inp  = document.getElementById(inpId);
+  const icon = document.getElementById(iconId);
+  if(!inp || !icon) return;
+  if (inp.type === 'password') {
+    inp.type = 'text';
+    // szem ikon változtatása (áthúzott szem)
+    icon.innerHTML = `
+      <path d="M12 5C7 5 2.73 8.11 1 12c1.73 3.89 6 7 11 7s9.27-3.11 11-7c-1.73-3.89-6-7-11-7Z"/>
+      <circle cx="12" cy="12" r="2.5"/>
+      <line x1="3" y1="3" x2="21" y2="21" stroke="currentColor" stroke-width="2"/>
+    `;
+  } else {
+    inp.type = 'password';
+    // vissza a normál szem ikon
+    icon.innerHTML = `
+      <path d="M12 5C7 5 2.73 8.11 1 12c1.73 3.89 6 7 11 7s9.27-3.11 11-7c-1.73-3.89-6-7-11-7Z"/>
+      <circle cx="12" cy="12" r="2.5"/>
+    `;
   }
 }
 </script>
