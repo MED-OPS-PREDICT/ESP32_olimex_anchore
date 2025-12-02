@@ -345,6 +345,8 @@
         <div></div>
         <div class="toolbar">
             <button class="btn ghost" id="btnToStats">Statisztika</button>
+            <!-- Új gomb jelszóváltoztatáshoz -->
+            <button class="btn ghost" id="btnPasswd">Jelszavak</button>
             <button class="btn ghost" id="btnRebootEsp">Újraindítás</button>
         </div>
 
@@ -770,15 +772,38 @@ async function refreshStatus() {
           noBleTimer = null;
         }
 
-        // Heartbeat alapján döntés (hb_status itt láthatóan szám)
-        const ageMs = Number(s.hb_status);
-        if (Number.isFinite(ageMs)) {
-          if (ageMs > hbTimeoutMs) {
-            txt   = `Nem jön HB az anchorból (${ageMs} ms)`;
+        // Heartbeat állapot értelmezése a hb_status mező alapján.
+        // A hb_status bitkódot tartalmaz: 1=BLE link, 2=HB notify, 4=PRELOCK, 8=LOCK, stb.
+        const hbCode = Number(s.hb_status);
+        if (Number.isFinite(hbCode)) {
+          const hasBle  = (hbCode & 1) !== 0;
+          const cfgNtf  = (hbCode & 2) !== 0;
+          const prelock = (hbCode & 4) !== 0;
+          const lock    = (hbCode & 8) !== 0;
+          if (!hasBle) {
+            // nincs BLE kapcsolat – ezt a külső BLE rész is kezeli, de itt fallback
+            txt   = 'Nincs BLE kapcsolat az anchorral';
             level = 'err';
-          } else {
-            txt   = `HB rendben`;
+          } else if (!cfgNtf) {
+            txt   = 'BLE OK, de HB/notify nincs engedélyezve';
+            level = 'warn';
+          } else if (!lock && !prelock) {
+            // nincs UWB SYNC (nem jönnek A/B keretek)
+            txt   = 'Nincs SYNC';
+            level = 'err';
+          } else if (lock && prelock) {
+            // SYNC állapot régi (mindkét bit be van állítva)
+            txt   = 'SYNC régi (WARN)';
+            level = 'warn';
+          } else if (lock) {
+            txt   = 'HB rendben';
             level = 'ok';
+          } else if (prelock) {
+            txt   = 'SYNC felépülőben';
+            level = 'warn';
+          } else {
+            txt   = `HB státusz: ${hbCode}`;
+            level = 'warn';
           }
         } else {
           txt   = 'Anchor állapot: ismeretlen';
@@ -1082,6 +1107,12 @@ $('btnRebootEsp').addEventListener('click', async () => {
 
 $('btnToStats').addEventListener('click', () => {
   window.location.href = "/stats";
+});
+
+// Új eseménykezelő a jelszó gombhoz
+$('btnPasswd').addEventListener('click', () => {
+  // átirányítás az új jelszó módosító oldalra
+  window.location.href = "/passwd";
 });
 
 </script>
