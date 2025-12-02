@@ -1,989 +1,1097 @@
-// components/webserver/webserver.cpp
-// HTTP szerver + auth + /api/status + /api/config
-// A BLE TLV GET route-ot a http_server.c adja (http_register_routes)
+<!doctype html>
+<html lang="hu">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Super User – UWB Anchor</title>
+<style>
+  :root{
+    --bg:#0b1522;
+    --panel:#0e1d2b;
+    --panel2:#0a1825;
+    --muted:#9fb0c7;
+    --txt:#e9f1fb;
+    --acc:#2da8ff;
+    --ok:#19c37d;
+    --warn:#ffb020;
+    --err:#ff5d5d;
+  }
+  *{box-sizing:border-box;}
 
-#include <string>
-#include <vector>
-#include <cstring>
-#include <cstdio>
-#include <cinttypes>
-#include <cctype>          // isxdigit, tolower
+  body{
+    margin:0;
+    min-height:100vh;
+    background:linear-gradient(180deg,#091321,#0b1522);
+    color:var(--txt);
+    font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,Ubuntu,sans-serif;
+  }
 
-#include "esp_http_server.h"
-#include "esp_log.h"
-#include "esp_timer.h"
-#include "esp_system.h"
-#include "mbedtls/base64.h"
-#include "lwip/ip4_addr.h"
-#include "lwip/ip_addr.h"
-#include "nvs_flash.h"
-#include "nvs.h"
-#include "aes_sender.h"
-#include "key_storage.h"
+  header{
+    padding:14px 18px;
+    border-bottom:1px solid rgba(255,255,255,.06);
+    display:flex;
+    gap:12px;
+    align-items:center;
+    justify-content:space-between;
+  }
+  h1{margin:0;font-size:16px;}
 
-#include "webserver.hpp"
-#include "globals.h"
-#include "error_code_decoding.h"
-#include "hb_status.h"
-#include "web_stats.h"
+    .wrap{
+      padding:16px;
+      display:grid;
+      gap:14px;
+      max-width:1840px;
+      margin:0 auto;
+    }
 
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
+    /* maga a kártya: azonos magasság, a tartalom kitölti */
+    .cfg-card{
+      display:flex;
+      flex-direction:column;
+      /*min-height:520px; */                        /* kártya “pontos” magassága */
+    }
 
-extern "C" void ble_http_bridge_init(void);
-extern "C" void http_register_routes(httpd_handle_t h);
+    .cfg-card .bd{
+      flex:1 1 auto;
+      overflow:hidden;
+    }
 
-extern "C" void ethernet_reapply_ip_from_net(void);
+    /* ha azt szeretnéd, hogy a táblák belül görgősek lehessenek: */
+    .cfg-card .table-wrap{
+      /*max-height:380px; */                        /* ízlés szerint állítható */
+      overflow-y:auto;
+    }
 
-#ifndef IPSTR
-#define IPSTR "%d.%d.%d.%d"
-#endif
+  .card{
+    background:color-mix(in srgb,var(--panel) 92%,#000 8%);
+    border:1px solid rgba(255,255,255,.08);
+    border-radius:16px;
+    box-shadow:0 10px 34px rgba(0,0,0,.35);
+  }
+  .card.full{
+    grid-column:1 / -1;
+  }
+  .card .hd{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding:10px 14px;
+    border-bottom:1px solid rgba(255,255,255,.06);
+    gap:8px;
+  }
+  .card .hd-title{
+    display:flex;
+    flex-direction:column;
+    gap:2px;
+  }
+  .card .hd-title small{
+    font-size:11px;
+    color:var(--muted);
+  }
+  .card .bd{padding:12px 14px 14px;}
 
-#ifndef IP2STR
-#define IP2STR(ipaddr) \
-    ip4_addr1_16(ipaddr), \
-    ip4_addr2_16(ipaddr), \
-    ip4_addr3_16(ipaddr), \
-    ip4_addr4_16(ipaddr)
-#endif
+  .cfg-grid{
+    display:grid;
+    gap:14px;
+    grid-template-columns:repeat(auto-fit,minmax(380px,1fr));
+  }
 
-static const char* TAG = "WEB";
 
-/* ================= HTTPD handle ================= */
-static httpd_handle_t s_http = nullptr;
+    .anchor-status{
+      margin-top:6px;
+      font-size:13px;
+      color:var(--muted);
+    }
+    .anchor-status.ok   { color:var(--ok); }
+    .anchor-status.warn { color:var(--warn); }
+    .anchor-status.err  { color:var(--err); }
 
-/* ================= Users + Sessions ================= */
-struct User { const char* u; const char* p; user_role_t r; };
-static const User kUsers[] = {
-    {"diag","diag",ROLE_DIAG},
-    {"admin","admin",ROLE_BLE},
-    {"root","root",ROLE_ROOT},
-    {nullptr,nullptr,ROLE_NONE}
+    /* ===== Kapcsolati állapot sor ===== */
+    .status-wrap{
+      display:flex;
+      flex-direction:column;
+      align-items:flex-end;
+      gap:4px;
+      min-width:360px;              /* hogy ne törjön szét túl hamar */
+    }
+    .status-pills{
+      display:flex;
+      flex-wrap:wrap;
+      gap:6px;
+      justify-content:flex-end;
+    }
+    /* Anchor állapot – „pill” kinézetben */
+    .anchor-status{
+      display:inline-flex;
+      align-items:center;
+      padding:2px 10px;
+      border-radius:999px;
+      font-size:11px;
+      background:rgba(255,255,255,.03);
+      color:var(--muted);
+      white-space:nowrap;
+    }
+    .anchor-status.ok{
+      background:rgba(25,195,125,.18);
+      color:#9ce7c9;
+    }
+    .anchor-status.warn{
+      background:rgba(255,176,32,.18);
+      color:#ffd79b;
+    }
+    .anchor-status.err{
+      background:rgba(255,93,93,.18);
+      color:#ffc3c3;
+    }
+
+    @media (max-width: 900px){
+      .status-wrap{
+        align-items:flex-start;
+        min-width:0;
+      }
+      .status-pills{
+        justify-content:flex-start;
+      }
+    }
+  .btn{
+    appearance:none;
+    border:0;
+    border-radius:12px;
+    padding:8px 12px;
+    background:linear-gradient(180deg,var(--acc),#57b6ff);
+    color:#00203a;
+    font-weight:700;
+    cursor:pointer;
+    font-size:13px;
+    white-space:nowrap;
+  }
+  .btn.ghost{
+    background:transparent;
+    color:var(--txt);
+    border:1px solid rgba(255,255,255,.18);
+  }
+  .btn:disabled{opacity:.6;cursor:default;}
+
+  .toolbar{
+    display:flex;
+    flex-wrap:wrap;
+    gap:8px;
+    align-items:center;
+    justify-content:flex-end;
+  }
+
+  .form-grid{
+    display:grid;
+    grid-template-columns:160px minmax(0,1fr);
+    gap:6px 10px;
+  }
+
+  .pill{
+    display:inline-block;
+    padding:2px 7px;
+    border-radius:999px;
+    font-size:11px;
+  }
+  .ok{background:rgba(25,195,125,.2);color:#9ce7c9;}
+  .warn{background:rgba(255,176,32,.2);color:#ffd79b;}
+  .err{background:rgba(255,93,93,.18);color:#ffc3c3;}
+
+  .mono{
+    font-family:ui-monospace,Menlo,Consolas,monospace;
+    font-size:12px;
+  }
+  .muted{color:var(--muted);}
+
+  .inp{
+    width:100%;
+    padding:7px 9px;
+    border-radius:10px;
+    border:1px solid rgba(255,255,255,.12);
+    background:var(--panel2);
+    color:var(--txt);
+    font-size:13px;
+  }
+  .inp[disabled]{opacity:.6;}
+
+  .sec-title{
+    margin:10px 0 4px;
+    color:var(--muted);
+    font-weight:600;
+    font-size:13px;
+  }
+
+  .table-wrap{
+    width:100%;
+    overflow-x:auto;
+  }
+
+  table{
+    width:100%;
+    border-collapse:collapse;
+    table-layout:fixed;
+    font-size:13px;
+  }
+  th,td{
+    padding:6px 8px;
+    border-top:1px solid rgba(255,255,255,.06);
+    vertical-align:middle;
+  }
+  th{
+    color:var(--muted);
+    text-align:left;
+    font-weight:600;
+  }
+
+    /* alapértelmezett arányok – ha máshol is használsz cfg-table-t */
+    .cfg-table col.col-key  { width:45%; }
+    .cfg-table col.col-esp  { width:15%; }
+    .cfg-table col.col-dwm  { width:15%; }
+    .cfg-table col.col-new  { width:25%; }
+
+    /* 1. kártya: közös (ESP + DWM) – itt legyen széles a kulcs, két vékony érték, közepes új érték */
+    #tblBase col.col-key  { width:28%; }
+    #tblBase col.col-esp  { width:15%; }
+    #tblBase col.col-dwm  { width:15%; }
+    #tblBase col.col-new  { width:32%; }
+
+    /* 2. kártya: ESP konfiguráció – Kulcs nagy, ESP közepes, Új érték nagyobb */
+    #tblIps  col.col-key  { width:40%; }
+    #tblIps  col.col-esp  { width:25%; }
+    #tblIps  col.col-new  { width:35%; }
+
+    /* 3. kártya: DWM konfiguráció – Kulcs közepes, DWM közepes, Új érték nagyobb */
+    #tblSync col.col-key,
+    #tblPhy  col.col-key  { width:40%; }
+
+    #tblSync col.col-dwm,
+    #tblPhy  col.col-dwm  { width:20%; }
+
+    #tblSync col.col-new,
+    #tblPhy  col.col-new  { width:40%; }
+
+  #tblIps td.mono{
+    white-space: normal;
+    word-break: break-all;
+  }
+
+  #log{
+    white-space: pre-wrap;
+    word-break: break-all;
+    height: 220px;
+    max-height: 220px;
+    overflow: auto;
+  }
+
+    #warn {
+      display: none !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      border: 0 !important;
+      height: 0 !important;
+      background: transparent !important;
+    }
+
+  @media (max-width: 900px){
+    .wrap{padding:10px;}
+    header{flex-direction:column;align-items:flex-start;gap:6px;}
+    .form-grid{grid-template-columns:120px minmax(0,1fr);}
+    .cfg-table col.col-key{width:170px;}
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>Super User</h1>
+  <div class="muted">ESP lekér • DWM lekér • Beállít mindkettő</div>
+  <button class="btn ghost" id="btnLogout">Kijelentkezés</button>
+</header>
+
+<div class="wrap">
+    <!-- DWM kapcsolat kártya – teljes szélesség -->
+    <section class="card full">
+      <div class="hd">
+        <div class="hd-title">
+          <span>Kapcsolati állapot</span>
+          <small>BLE + IP célok elérhetősége</small>
+        </div>
+
+        <div class="status-wrap">
+          <div class="status-pills">
+            <span id="pillBle"  class="pill warn">BLE: ismeretlen</span>
+            <span id="pillEth"  class="pill warn">ETH: ismeretlen</span>
+            <span id="pillZone" class="pill warn">Zóna vezérlő: ismeretlen</span>
+            <span id="pillMain" class="pill warn">Fő szerver: ismeretlen</span>
+            <span id="pillServ" class="pill warn">Service: ismeretlen</span>
+          </div>
+          <div id="anchorStatus" class="anchor-status warn">
+            Anchor állapot: ismeretlen
+          </div>
+        </div>
+      </div>
+      <div class="bd">
+      <div class="form-grid">
+        <label>Szolgáltatás UUID</label>
+        <input class="inp" id="svcUuid" value="12345678-1234-5678-1234-1234567890ab">
+
+        <label>CFG karakterisztika</label>
+        <input class="inp" id="cfgUuid" value="abcdef02-1234-5678-1234-1234567890ab">
+
+        <label>DATA karakterisztika</label>
+        <input class="inp" id="dataUuid" value="abcdef01-1234-5678-1234-1234567890ab">
+
+        <label>Req ID</label>
+        <input class="inp mono" id="reqId" value="1">
+
+        <div></div>
+        <div class="toolbar">
+            <button class="btn ghost" id="btnToStats">Statisztika</button>
+            <!-- Új gomb jelszóváltoztatáshoz -->
+            <button class="btn ghost" id="btnPasswd">Jelszavak</button>
+            <button class="btn ghost" id="btnRebootEsp">Újraindítás</button>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- Konfigurációs kártyák rácsban -->
+  <div class="cfg-grid">
+
+    <!-- Közös (ESP + DWM) -->
+    <section class="card cfg-card">
+      <div class="hd">
+        <div class="hd-title">
+          <span>Közös konfiguráció </span>
+          <small>(ESP + DWM)</small>
+        </div>
+        <div class="toolbar">
+          <button class="btn" id="btnApply">Beállít (ESP + DWM)</button>
+        </div>
+      </div>
+      <div class="bd">
+        <div class="sec-title">Alap paraméterek:</div>
+        <div class="table-wrap">
+          <table id="tblBase" class="cfg-table">
+            <colgroup>
+              <col class="col-key">
+              <col class="col-esp">
+              <col class="col-dwm">
+              <col class="col-new">
+            </colgroup>
+            <thead>
+              <tr><th>Kulcs</th><th>ESP</th><th>DWM</th><th>Új érték</th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div class="muted" style="margin-top:6px">Üres mező nem küldődik.</div>
+      </div>
+    </section>
+
+    <!-- ESP-only -->
+    <section class="card cfg-card">
+      <div class="hd">
+        <div class="hd-title">
+          <span>ESP konfiguráció</span>
+          <small>Ethernet, saját IP, gateway, IPS cél IP-k</small>
+        </div>
+        <div class="toolbar">
+          <button class="btn ghost" id="btnEspGet">LEKÉR ESP</button>
+        </div>
+      </div>
+      <div class="bd">
+        <div class="sec-title">Ethernet és cél IP-k:</div>
+        <div class="table-wrap">
+          <table id="tblIps" class="cfg-table esp-only">
+            <colgroup>
+              <col class="col-key">
+              <col class="col-esp">
+              <col class="col-new">
+            </colgroup>
+            <thead>
+              <tr><th>Kulcs</th><th>ESP</th><th>Új érték</th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- DWM-only -->
+    <section class="card cfg-card">
+      <div class="hd">
+        <div class="hd-title">
+          <span>DWM konfiguráció</span>
+          <small>Szinkron és PHY paraméterek</small>
+        </div>
+        <div class="toolbar">
+          <button class="btn ghost" id="btnDwmGet">LEKÉR DWM</button>
+        </div>
+      </div>
+      <div class="bd">
+        <div class="sec-title">Szinkron:</div>
+        <div class="table-wrap">
+          <table id="tblSync" class="cfg-table dwm-only">
+            <colgroup>
+              <col class="col-key">
+              <col class="col-dwm">
+              <col class="col-new">
+            </colgroup>
+            <thead>
+              <tr><th>Kulcs</th><th>DWM</th><th>Új érték</th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+
+        <div class="sec-title">PHY:</div>
+        <div class="table-wrap">
+          <table id="tblPhy" class="cfg-table dwm-only">
+            <colgroup>
+              <col class="col-key">
+              <col class="col-dwm">
+              <col class="col-new">
+            </colgroup>
+            <thead>
+              <tr><th>Kulcs</th><th>DWM</th><th>Új érték</th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+  </div>
+
+  <!-- Log – teljes szélesség -->
+  <section class="card full">
+    <div class="hd">
+      <div>Log</div>
+      <div class="muted">Soros és böngésző</div>
+    </div>
+    <div class="bd mono" id="log"></div>
+  </section>
+</div>
+
+<!-- ÚJ: tooltipek külön fájlban -->
+<script src="/super_tooltips.js"></script>
+
+<script>
+/* ===== globális hibanapló ===== */
+window.addEventListener('error', e => { logln('[JS-ERROR] '+(e.message||e)); });
+window.addEventListener('unhandledrejection', e => { logln('[JS-PROMISE] '+(e.reason||e)); });
+
+/* ===== állapot ===== */
+let g = { dev:null, server:null, svc:null, cfg:null, data:null, esp:{}, dwm:{} };
+
+let hbTimeoutMs    = 5000;   // ennyit várjon a "Nincs BLE kapcsolat..." előtt
+let noBleTimer     = null;   // erre rakjuk a setTimeout handle-t
+
+let statusPeriodMs = 5000;   // státusz polling periódus
+let statusInterval = null;   // setInterval handle
+
+/* ===== util + soros írható log ===== */
+const $  = id => document.getElementById(id);
+const qs = s  => document.querySelector(s);
+let serialWriter = null;
+
+// Tooltip helper – külső fájlból (super_tooltips.js)
+function getKeyTooltip(key){
+  const t = window.SUPER_TOOLTIPS && SUPER_TOOLTIPS.keys && SUPER_TOOLTIPS.keys[key];
+  return t || '';
+}
+
+function getInputTooltip(id){
+  const t = window.SUPER_TOOLTIPS && SUPER_TOOLTIPS.inputs && SUPER_TOOLTIPS.inputs[id];
+  return t || '';
+}
+
+// Fix mezők (svcUuid, cfgUuid, ...) tooltipeinek beállítása
+function applyFixedTooltips(){
+  if (!window.SUPER_TOOLTIPS || !SUPER_TOOLTIPS.inputs) return;
+  Object.entries(SUPER_TOOLTIPS.inputs).forEach(([id, text]) => {
+    const el = document.getElementById(id);
+    if (el && !el.title) el.title = text;
+  });
+}
+
+function slog(s){
+  if(serialWriter){
+    try{ serialWriter.write(s+'\n'); }catch(_){}
+  }
+}
+function logln(s){
+  const L = $('log');
+  if(L){
+    L.textContent += s + '\n';
+    L.scrollTop   = L.scrollHeight;
+  }
+  console.log(s);
+  slog(s);
+}
+
+/* ===== Secure Context ellenőrzés ===== */
+(function(){
+  const w = $('warn');
+  if (w) w.style.display = 'none';
+})();
+
+/* ===== renderdef ===== */
+const GROUPS = {
+  base: [
+    {k:'NETWORK_ID', edit:true, to:'both'},
+    {k:'ZONE_ID',    edit:true, to:'both'},
+    {k:'ANCHOR_ID',  edit:true, to:'both'},
+    {k:'HB_MS',      edit:true, to:'both'},
+    {k:'LOG_LEVEL',  edit:true, to:'both'},
+    {k:'TX_ANT_DLY', edit:true, to:'both'},
+    {k:'RX_ANT_DLY', edit:true, to:'both'},
+    {k:'BIAS_TICKS', edit:true, to:'both'},
+    {k:'PHY_CH',     edit:true, to:'both'},
+    {k:'PHY_SFDTO',  edit:true, to:'both'}
+  ],
+  ips: [
+    {hdr:'Eszköz metaadatok'},
+      {k:'ZONE_NAME',   edit:true, to:'esp', label:'Zóna név'},
+      {k:'DEVICE_NAME', edit:true, to:'esp', label:'Eszköz neve'},
+      {k:'DEVICE_DESC', edit:true, to:'esp', label:'Eszköz rövid leírása'},
+
+    {hdr:'Saját ethernet (ESP)'},
+      {k:'ETH_MODE', edit:true, to:'esp', label:'Mód (0=DHCP, 1=STATIKUS)'},
+      {k:'ETH_IP',   edit:true, to:'esp', label:'Saját IP'},
+      {k:'ETH_MASK', edit:true, to:'esp', label:'Maszk'},
+      {k:'ETH_GW',   edit:true, to:'esp', label:'Alapértelmezett gateway'},
+
+    {hdr:'Gateway'},
+      {k:'GW_ID',          edit:true, to:'esp', label:'Gateway ID'},
+
+    {hdr:'Titkosítás'},
+      {k:'AES_KEY', edit:true, to:'esp', label:'AES kulcs (32 byte hex)'},
+
+    {hdr:'Zóna vezérlő'},
+      {k:'ZONE_CTRL_IP',   edit:true, to:'esp', label:'Zóna vezérlő IP'},
+      {k:'ZONE_CTRL_PORT', edit:true, to:'esp', label:'Zóna vezérlő PORT'},
+      {k:'ZONE_CTRL_EN',   edit:true, to:'esp', label:'Zóna vezérlő ENGEDÉLY'},
+
+    {hdr:'Fő szerver'},
+      {k:'MAIN_IP',        edit:true, to:'esp', label:'Fő szerver IP'},
+      {k:'MAIN_PORT',      edit:true, to:'esp', label:'Fő szerver PORT'},
+      {k:'MAIN_EN',        edit:true, to:'esp', label:'Fő szerver ENGEDÉLY'},
+
+    {hdr:'Service'},
+      {k:'SERVICE_IP',     edit:true, to:'esp', label:'Service IP'},
+      {k:'SERVICE_PORT',   edit:true, to:'esp', label:'Service PORT'},
+      {k:'SERVICE_EN',     edit:true, to:'esp', label:'Service ENGEDÉLY'}
+  ],
+  sync: [
+    {k:'PPM_MAX',     edit:true, to:'dwm'},
+    {k:'JUMP_PPM',    edit:true, to:'dwm'},
+    {k:'AB_GAP_MS',   edit:true, to:'dwm'},
+    {k:'MS_EWMA_DEN', edit:true, to:'dwm'},
+    {k:'TK_EWMA_DEN', edit:true, to:'dwm'},
+    {k:'TK_MIN_MS',   edit:true, to:'dwm'},
+    {k:'TK_MAX_MS',   edit:true, to:'dwm'},
+    {k:'DTTX_MIN_MS', edit:true, to:'dwm'},
+    {k:'DTTX_MAX_MS', edit:true, to:'dwm'},
+    {k:'LOCK_NEED',   edit:true, to:'dwm'}
+  ],
+  phy: [
+    {k:'PHY_CH',       edit:true, to:'both'},
+    {k:'PHY_PLEN',     edit:true, to:'dwm'},
+    {k:'PHY_PAC',      edit:true, to:'dwm'},
+    {k:'PHY_TX_CODE',  edit:true, to:'dwm'},
+    {k:'PHY_RX_CODE',  edit:true, to:'dwm'},
+    {k:'PHY_SFD',      edit:true, to:'dwm'},
+    {k:'PHY_BR',       edit:true, to:'dwm'},
+    {k:'PHY_PHRMODE',  edit:true, to:'dwm'},
+    {k:'PHY_PHRRATE',  edit:true, to:'dwm'},
+    {k:'PHY_SFDTO',    edit:true, to:'both'},
+    {k:'PHY_STS_MODE', edit:true, to:'dwm'},
+    {k:'PHY_STS_LEN',  edit:true, to:'dwm'},
+    {k:'PHY_PDOA',     edit:true, to:'dwm'}
+  ]
 };
-struct Session { char sid[33]; user_role_t role; uint32_t exp_s; };
-static Session g_sess[8];
 
-static void mk_sid(char out[33]){
-    for(int i=0;i<32;i++){ uint8_t b = esp_random() & 0x0F; out[i] = "0123456789abcdef"[b]; }
-    out[32] = 0;
-}
-static user_role_t check_user(const char* u, const char* pw){
-    for (const auto& x: kUsers) if (x.u && strcmp(u,x.u)==0 && strcmp(pw,x.p)==0) return x.r;
-    return ROLE_NONE;
-}
-
-/* ---------- Basic Auth decode ---------- */
-static bool decode_basic(const char* h, std::string& u, std::string& p){
-    if (!h) return false;
-    const char* pref = "Basic ";
-    if (strncmp(h, pref, 6) != 0) return false;
-    const char* b64 = h + 6;
-    size_t olen=0;
-    (void)mbedtls_base64_decode(nullptr,0,&olen,(const unsigned char*)b64,strlen(b64));
-    std::vector<unsigned char> buf(olen+1);
-    if (mbedtls_base64_decode(buf.data(),olen,&olen,(const unsigned char*)b64,strlen(b64))!=0) return false;
-    buf[olen]=0;
-    char* sep = (char*)strchr((char*)buf.data(),':'); if(!sep) return false;
-    *sep=0; u.assign((char*)buf.data()); p.assign(sep+1); return true;
-}
-static bool decode_basic_hdr(httpd_req_t* req, std::string& u, std::string& p){
-    size_t len=httpd_req_get_hdr_value_len(req,"Authorization"); if(!len) return false;
-    std::vector<char> auth(len+1);
-    if(httpd_req_get_hdr_value_str(req,"Authorization",auth.data(),auth.size())!=ESP_OK) return false;
-    return decode_basic(auth.data(), u, p);
+function fmtZoneIdHex(v) {
+  if (v == null) return "";
+  if (typeof v === "string" && v.startsWith("0x")) {
+    // normalize: nagybetű, 4 számjegy
+    const n = parseInt(v, 16);
+    if (!Number.isFinite(n)) return "";
+    return "0x" + n.toString(16).toUpperCase().padStart(4, "0");
+  }
+  const n = Number(v);
+  if (!Number.isFinite(n)) return "";
+  return "0x" + n.toString(16).toUpperCase().padStart(4, "0");
 }
 
-/* ---------- Cookie (SID) ellenőrzés ---------- */
-static user_role_t role_from_cookie(httpd_req_t* req){
-    size_t n=httpd_req_get_hdr_value_len(req,"Cookie"); if(!n) return ROLE_NONE;
-    std::vector<char> ck(n+1);
-    if(httpd_req_get_hdr_value_str(req,"Cookie",ck.data(),ck.size())!=ESP_OK) return ROLE_NONE;
-    const char* m=strstr(ck.data(),"SID="); if(!m) return ROLE_NONE; m+=4;
-    char sid[33]={0}; int i=0; while(*m && *m!=';' && i<32) sid[i++]=*m++;
-    uint32_t now=(uint32_t)(esp_timer_get_time()/1000000ULL);
-    for(auto& s: g_sess) if(s.sid[0] && strcmp(s.sid,sid)==0 && s.exp_s>now) return s.role;
-    return ROLE_NONE;
+function cell(v){
+  // ha nincs érték, kérdőjel jelenjen meg
+  return `<td class="mono">${(v===undefined || v===null || v==='') ? '?' : v}</td>`;
 }
-static user_role_t role_from_auth(httpd_req_t* req){
-    user_role_t r = role_from_cookie(req);
-    if (r != ROLE_NONE) return r;
-    std::string u,p; if(!decode_basic_hdr(req,u,p)) return ROLE_NONE;
-    return check_user(u.c_str(), p.c_str());
+
+function renderGroup(tblId, items, cfg){
+  const { showEsp, showDwm } = cfg;
+  const tb = qs(`#${tblId} tbody`);
+  if(!tb){
+    logln('[UI] hiányzó tábla: ' + tblId);
+    return;
+  }
+
+  const colSpan = 1 + (showEsp ? 1 : 0) + (showDwm ? 1 : 0) + 1;
+
+  tb.innerHTML = items.map(it => {
+    // alcím sor
+    if (it.hdr) {
+      return `<tr><td colspan="${colSpan}" class="muted" style="padding-top:10px;font-weight:600;">${it.hdr}</td></tr>`;
+    }
+
+    const key   = it.k;
+    const label = it.label || key;
+
+    let esp = (g.esp && g.esp[key] !== undefined) ? g.esp[key] : '';
+    let dwm = (g.dwm && g.dwm[key] !== undefined) ? g.dwm[key] : '';
+
+    // ----- ZONE_ID: hex formázás a megjelenítéshez -----
+    if (key === 'ZONE_ID') {
+      if (esp !== '-' && esp != null) {
+        esp = fmtZoneIdHex(esp);
+      }
+
+      let src = null;
+      if (g.dwm) {
+        if (g.dwm.ZONE_ID_HEX)        src = g.dwm.ZONE_ID_HEX;
+        else if (g.dwm.ZONE_ID !== undefined) src = g.dwm.ZONE_ID;
+      }
+      if (src != null) dwm = fmtZoneIdHex(src);
+      else dwm = '';
+    }
+    // ----------------------------------------------------
+
+    // placeholder – ZONE_ID-nek hex minta
+    let placeholder = 'új érték';
+    if (key === 'ZONE_ID') {
+      placeholder = '0x1234';
+    }
+
+    // TOOLTIP SZÖVEGEK
+    const keyTip   = getKeyTooltip(key);
+    const inputTip = getInputTooltip('in_'+key) || keyTip;
+
+    const labelHtml = keyTip
+      ? `<span title="${keyTip}">${label}</span>`
+      : label;
+
+    const inputAttrs = inputTip ? ` title="${inputTip}"` : '';
+
+    const input = it.edit
+      ? `<input class="inp mono" id="in_${key}" placeholder="${placeholder}"${inputAttrs}>`
+      : `<input class="inp" id="in_${key}" placeholder="nem írható" disabled${inputAttrs}>`;
+
+    const cells = [];
+    cells.push(`<td>${labelHtml}</td>`);
+    if (showEsp) cells.push(cell(esp));
+    if (showDwm) cells.push(cell(dwm));
+    cells.push(`<td>${input}</td>`);
+
+    return `<tr>${cells.join('')}</tr>`;
+  }).join('');
 }
-static bool require_role(httpd_req_t* req, user_role_t need){
-    user_role_t r=role_from_auth(req);
-    if(r<need){
-        if (strncmp(req->uri,"/api/",5)==0 || strncmp(req->uri,"/auth/",6)==0){
-            httpd_resp_set_status(req,"401 Unauthorized"); httpd_resp_sendstr(req,"");
+
+function setPillEl(id, state, text) {
+  const el = $(id);
+  if (!el) return;
+
+  // régi állapotok leszedése
+  el.classList.remove('ok', 'warn', 'err');
+
+  // új állapot felrakása
+  if (state) {
+    el.classList.add(state);
+  }
+
+  // felirat frissítése, ha kaptunk szöveget
+  if (typeof text === 'string') {
+    el.textContent = text;
+  }
+}
+
+async function refreshStatus() {
+  try {
+    const r = await fetch('/api/status', { cache: 'no-store' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const s = await r.json();
+
+    // BLE állapot (csak a BLE linket nézzük)
+    if (s.ble_up) {
+      setPillEl('pillBle', 'ok', 'BLE: kapcsolódva');
+    } else {
+      setPillEl('pillBle', 'err', 'BLE: nincs kapcsolat');
+    }
+
+    // ---- ETH ----
+    if (s.eth_up) {
+      setPillEl('pillEth', 'ok',  'ETH: van IP');
+    } else {
+      setPillEl('pillEth', 'err', 'ETH: nincs IP');
+    }
+
+    // ---- zóna / main / service engedély ----
+    setPillEl('pillZone',  s.zone_en    ? 'ok' : 'warn',
+              s.zone_en    ? 'Zóna vezérlő: engedélyezve' : 'Zóna vezérlő: tiltva');
+
+    setPillEl('pillMain',  s.main_en    ? 'ok' : 'warn',
+              s.main_en    ? 'Fő szerver: engedélyezve'   : 'Fő szerver: tiltva');
+
+    setPillEl('pillServ',  s.service_en ? 'err' : 'ok',
+              s.service_en ? 'Service: engedélyezve' : 'Service: tiltva');
+
+    // ---- Anchor / szinkron szöveg ----
+    const as = $('anchorStatus');
+    if (as) {
+      let txt, level;
+
+      if (!s.ble_up) {
+        // BLE down → itt jön a HB_MS-es késleltetés
+        if (!noBleTimer) {
+          noBleTimer = setTimeout(() => {
+            const as2 = $('anchorStatus');
+            if (as2) {
+              as2.textContent = 'Nincs BLE kapcsolat az anchorral';
+              as2.className   = 'anchor-status err';
+            }
+            noBleTimer = null;
+          }, hbTimeoutMs);
+        }
+        txt   = 'BLE kapcsolat bontása alatt…';
+        level = 'warn';
+      } else {
+        // BLE OK → töröljük az esetleges BLE timer-t
+        if (noBleTimer) {
+          clearTimeout(noBleTimer);
+          noBleTimer = null;
+        }
+
+        // Heartbeat alapján döntés (hb_status itt láthatóan szám)
+        const ageMs = Number(s.hb_status);
+        if (Number.isFinite(ageMs)) {
+          if (ageMs > hbTimeoutMs) {
+            txt   = `Nem jön HB az anchorból (${ageMs} ms)`;
+            level = 'err';
+          } else {
+            txt   = `HB rendben`;
+            level = 'ok';
+          }
         } else {
-            httpd_resp_set_status(req,"302 Found"); httpd_resp_set_hdr(req,"Location","/login"); httpd_resp_sendstr(req,"");
+          txt   = 'Anchor állapot: ismeretlen';
+          level = 'warn';
         }
-        return false;
-    }
-    return true;
-}
+      }
 
-/* ================= CORS + cache control ================= */
-static void add_cors(httpd_req_t* r){
-    httpd_resp_set_hdr(r, "Access-Control-Allow-Origin", "*");
-    httpd_resp_set_hdr(r, "Access-Control-Allow-Headers", "content-type, authorization");
-    httpd_resp_set_hdr(r, "Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-}
-static void add_no_cache(httpd_req_t* r){
-    httpd_resp_set_hdr(r, "Cache-Control", "no-store, no-cache, must-revalidate");
-    httpd_resp_set_hdr(r, "Pragma", "no-cache");
-    httpd_resp_set_hdr(r, "Expires", "0");
-}
-static esp_err_t options_ok(httpd_req_t* req){
-    add_cors(req);
-    httpd_resp_set_status(req, "204 No Content");
-    return httpd_resp_sendstr(req, "");
-}
-
-static esp_err_t send_file(httpd_req_t* req, const char* path, const char* ctype);
-
-static esp_err_t stats_get(httpd_req_t* r){
-    if(!require_role(r, ROLE_BLE)) return ESP_FAIL;
-    return send_file(r, "/spiffs/web_stats.html", "text/html");
-}
-
-esp_err_t handle_setkey(httpd_req_t *req)
-{
-    char buf[64];
-    int r = httpd_req_recv(req, buf, sizeof(buf)-1);
-    if (r <= 0) return ESP_FAIL;
-    buf[r] = 0;
-
-    if (strlen(buf) != 32) {
-        httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid key length");
-        return ESP_OK;
+      as.textContent = txt;
+      as.className   = 'anchor-status ' + level;
     }
 
-    if (!key_storage_save(buf)) {
-        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "NVS error");
-        return ESP_OK;
-    }
-
-    aes_sender_set_key_hex(buf);
-    httpd_resp_sendstr(req, "OK");
-    return ESP_OK;
+  } catch (e) {
+    logln('[STATUS] hiba: ' + e.message);
+    setPillEl('pillEth', 'err', 'ETH: hiba');
+    setPillEl('pillBle', 'err', 'BLE: hiba');
+  }
 }
 
+// induláskor + időszakosan
+refreshStatus();
+statusInterval = setInterval(refreshStatus, statusPeriodMs);
 
-/* ================= Static file helper ================= */
-static esp_err_t send_file(httpd_req_t* req, const char* path, const char* ctype){
-    FILE* f=fopen(path,"rb");
-    if(!f){ httpd_resp_send_err(req,HTTPD_404_NOT_FOUND,"Not found"); return ESP_FAIL; }
-    httpd_resp_set_type(req, ctype);
-    char buf[1024]; size_t n;
-    while((n=fread(buf,1,sizeof(buf),f))>0){
-        if(httpd_resp_send_chunk(req,buf,n)!=ESP_OK){ fclose(f); httpd_resp_sendstr_chunk(req,nullptr); return ESP_FAIL; }
-    }
-    fclose(f); httpd_resp_sendstr_chunk(req,nullptr); return ESP_OK;
+/* ===== események ===== */
+$('btnDwmGet'    ).addEventListener('click', doDwmGet);
+$('btnEspGet'    ).addEventListener('click', doEspGet);
+$('btnApply'     ).addEventListener('click', doSetBoth);
+
+function renderAll(){
+  // közös: ESP + DWM
+  renderGroup('tblBase', GROUPS.base, { showEsp:true, showDwm:true });
+  // ESP-only
+  renderGroup('tblIps',  GROUPS.ips,  { showEsp:true, showDwm:false });
+  // DWM-only
+  renderGroup('tblSync', GROUPS.sync, { showEsp:false, showDwm:true });
+  renderGroup('tblPhy',  GROUPS.phy,  { showEsp:false, showDwm:true });
 }
 
-/* ================= Pages ================= */
-static esp_err_t login_get(httpd_req_t* r){ return send_file(r,"/spiffs/login.html","text/html"); }
-static esp_err_t diag_get (httpd_req_t* r){ if(!require_role(r,ROLE_DIAG))return ESP_FAIL; return send_file(r,"/spiffs/diag.html","text/html"); }
-static esp_err_t ble_get  (httpd_req_t* r){ if(!require_role(r,ROLE_BLE ))return ESP_FAIL; return send_file(r,"/spiffs/ble.html","text/html"); }
-static esp_err_t admin_get(httpd_req_t* r){ if(!require_role(r,ROLE_ROOT))return ESP_FAIL; return send_file(r,"/spiffs/admin.html","text/html"); }
-static esp_err_t super_user_get(httpd_req_t* r){ if(!require_role(r,ROLE_BLE))return ESP_FAIL; return send_file(r,"/spiffs/super_user.html","text/html"); }
+// ESP GET után, amikor megjön a config:
+async function doEspGet(){
+  if (gBusy) return;
+  setBusy(true);
+  logln('[ESP] lekérés indul');
+  try{
+    const hdr = {
+      'Accept':'application/json',
+      'Authorization':'Basic '+btoa('admin:admin')
+    };
+    let r = await fetch('/api/config', { cache:'no-store', headers:hdr });
+    if(!r.ok) r = await fetch('/api/esp_config', { cache:'no-store', headers:hdr });
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    g.esp = await r.json();
 
-static esp_err_t super_tooltips_get(httpd_req_t *r)
-{
-    if (!require_role(r, ROLE_BLE)) {
-        return ESP_FAIL;   // ugyanaz a minta, mint diag_get / stats_get stb.
+    // HB_MS beolvasása
+    if (g.esp.HB_MS) {
+      const n = Number(g.esp.HB_MS);
+      if (Number.isFinite(n) && n > 0) {
+        hbTimeoutMs = n;        // ennyit vár a "Nincs BLE kapcsolat..." felirat
+        statusPeriodMs = n;     // ha a pollingot is ehhez akarod igazítani
+        if (statusInterval) clearInterval(statusInterval);
+        statusInterval = setInterval(refreshStatus, statusPeriodMs);
+        logln('[ESP] HB_MS: ' + n + ' ms');
+      }
     }
-    return send_file(r, "/spiffs/super_tooltips.js", "application/javascript");
+
+    renderAll();
+    logln('[ESP] kész');
+  }catch(e){
+    logln('[ESP] hiba: '+e.message);
+  }finally{
+    setBusy(false);
+  }
 }
 
-/* ================= /auth/login ================= */
-static esp_err_t auth_login_post(httpd_req_t* req){
-    add_cors(req);
-    add_no_cache(req);
+/* ===== BLE helyett HTTP DWM GET ===== */
+async function doDwmGet() {
+  if (gBusy) return;
+  setBusy(true);
+  logln('[UI] LEKÉR DWM (HTTP)');
+  try {
+    const hdr = {
+      'Accept': 'application/json',
+      'Authorization': 'Basic ' + btoa('admin:admin')
+    };
+    const r = await fetch('/api/dwm_get', { cache: 'no-store', headers: hdr });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
 
-    int len = req->content_len;
-    if (len <= 0) return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "empty");
+    const j = await r.json();
+    g.dwm = j;
+    renderAll();
+    logln('[DWM] kész (HTTP): ' + JSON.stringify(j));
+  } catch (e) {
+    logln('[DWM] hiba (HTTP): ' + e.message);
+  } finally {
+    setBusy(false);
+  }
+}
 
-    std::vector<char> body(len + 1, 0);
-    int off = 0;
-    while (off < len) {
-        int r = httpd_req_recv(req, body.data() + off, len - off);
-        if (r <= 0) return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "recv");
-        off += r;
-    }
-    ESP_LOGI(TAG, "login body: %s", body.data());
+// ===== DWM RAM-cache GET (/api/dwm_last) – gyors, nem indít új BLE lekérdezést =====
+async function doDwmGetCached() {
+  if (gBusy) return;
+  setBusy(true);
+  logln('[UI] LEKÉR DWM (cache /api/dwm_last)');
+  try {
+    const hdr = {
+      'Accept': 'application/json',
+      'Authorization': 'Basic ' + btoa('admin:admin')
+    };
+    const r = await fetch('/api/dwm_last', { cache: 'no-store', headers: hdr });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
 
-    char ctype[64] = {0};
-    if (httpd_req_get_hdr_value_str(req, "Content-Type", ctype, sizeof(ctype)) != ESP_OK) ctype[0]=0;
+    const j = await r.json();
+    g.dwm = j;
+    renderAll();
+    logln('[DWM] kész (cache): ' + JSON.stringify(j));
+  } catch (e) {
+    logln('[DWM] hiba (cache): ' + e.message);
+  } finally {
+    setBusy(false);
+  }
+}
 
-    auto trim = [](std::string s) -> std::string {
-        size_t a = s.find_first_not_of(" \t\r\n\"");
-        size_t b = s.find_last_not_of(" \t\r\n\"");
-        if (a == std::string::npos) {
-            return std::string();
+/* ===== SET mindkettőnek ===== */
+function gatherInputs(){
+  const outEsp = {};
+  const outDwm = {};
+  const groups = [GROUPS.base, GROUPS.ips, GROUPS.sync, GROUPS.phy];
+
+  for(const grp of groups){
+    for(const it of grp){
+      if (!it.k) continue;
+      const el = $('in_'+it.k);
+      if(!el || el.disabled) continue;
+      let v;
+
+      if (el.type === 'checkbox') {
+        // csúszó kapcsoló – mindig küldünk 0/1-et
+        v = el.checked ? '1' : '0';
+      } else {
+        v = el.value.trim();
+        if (v === '') continue;  // üres mező nem küldődik
+      }
+
+        if (it.k === 'ZONE_ID') {
+          // ha nem 0x-szel kezdődik, próbáljuk decimálisból konvertálni
+          if (!/^0x[0-9a-fA-F]+$/.test(v)) {
+            const n = Number(v);
+            if (!Number.isFinite(n)) {
+              alert('Hibás ZONE_ID: ' + v);
+              return null; // jelezz hibát a hívónak
+            }
+            v = '0x' + n.toString(16).toUpperCase().padStart(4, '0');
+          } else {
+            // 0x-szel kezdődik, normalizáljuk
+            const n = parseInt(v, 16);
+            if (!Number.isFinite(n)) {
+              alert('Hibás ZONE_ID: ' + v);
+              return null;
+            }
+            v = '0x' + n.toString(16).toUpperCase().padStart(4, '0');
+          }
+          // input mezőbe is visszaírjuk normalizálva
+          el.value = v;
         }
-        return s.substr(a, b - a + 1);
+
+        const dest = it.to || 'both';
+        if (dest === 'esp'  || dest === 'both') outEsp[it.k] = v;
+        if (dest === 'dwm'  || dest === 'both') outDwm[it.k] = v;
+
+    }
+  }
+  return { esp: outEsp, dwm: outDwm };
+}
+
+async function doSetBoth(){
+  if (gBusy) return;
+  setBusy(true);
+
+  try {
+    const res = gatherInputs();
+    if (!res) { setBusy(false); return; }
+    const { esp: inpEsp, dwm: inpDwm } = res;
+
+    if (Object.keys(inpEsp).length === 0 && Object.keys(inpDwm).length === 0) {
+      logln('[SET] nincs módosítás');
+      return;
+    }
+
+    const hdrJson = {
+      'Content-Type': 'application/json',
+      'Authorization': 'Basic ' + btoa('admin:admin')
     };
 
-    std::string user, pass;
-
-    auto find_json = [&](const char* key)->std::string{
-        const char* k = strstr(body.data(), key); if (!k) return {};
-        k = strchr(k, ':'); if (!k) return {}; ++k;
-        const char* p = k; while (*p==' '||*p=='\t'||*p=='\"') ++p;
-        const char* q = p; while (*q && *q!='\"' && *q!=',' && *q!='}') ++q;
-        return std::string(p, q - p);
-    };
-
-    auto url_decode = [](const char* s)->std::string{
-        std::string out;
-        for (; *s; ++s){
-            if (*s == '+') out.push_back(' ');
-            else if (*s == '%' && isxdigit((unsigned char)s[1]) && isxdigit((unsigned char)s[2])) {
-                int hi = isdigit((unsigned char)s[1]) ? s[1]-'0' : 10 + (tolower((unsigned char)s[1])-'a');
-                int lo = isdigit((unsigned char)s[2]) ? s[2]-'0' : 10 + (tolower((unsigned char)s[2])-'a');
-                out.push_back((char)((hi<<4)|lo)); s+=2;
-            } else out.push_back(*s);
-        }
-        return out;
-    };
-    auto get_form = [&](const char* key)->std::string{
-        std::string k = std::string(key) + "=";
-        const char* p = strstr(body.data(), k.c_str()); if (!p) return {};
-        p += k.size(); const char* q = p; while (*q && *q != '&') ++q;
-        return url_decode(std::string(p, q - p).c_str());
-    };
-
-    std::string cts(ctype);
-    for (auto& ch : cts) ch = (char)tolower((unsigned char)ch);
-
-    if (cts.find("application/json") != std::string::npos || strchr(body.data(), '{')) {
-        user = trim(find_json("\"user\""));
-        pass = trim(find_json("\"pass\""));
-    } else {
-        user = trim(get_form("user"));
-        pass = trim(get_form("pass"));
+    if (Object.keys(inpEsp).length > 0) {
+      const bodyEsp = JSON.stringify(inpEsp);
+      try {
+        let r = await fetch('/api/config', { method:'POST', headers:hdrJson, body:bodyEsp });
+        if (!r.ok) r = await fetch('/api/esp_config', { method:'POST', headers:hdrJson, body:bodyEsp });
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        logln('[ESP] SET elküldve: ' + bodyEsp);
+      } catch (e) {
+        logln('[ESP] SET hiba: ' + e.message);
+      }
     }
 
-    if (user.empty() || pass.empty()) return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "bad format");
-
-    user_role_t r = check_user(user.c_str(), pass.c_str());
-    if (r == ROLE_NONE) return httpd_resp_send_err(req, HTTPD_401_UNAUTHORIZED, "bad creds");
-
-    char sid[33]; mk_sid(sid);
-    uint32_t now = (uint32_t)(esp_timer_get_time()/1000000ULL);
-    int idx = -1;
-    for (int i = 0; i < (int)(sizeof(g_sess)/sizeof(g_sess[0])); ++i) if (g_sess[i].sid[0]==0){ idx=i; break; }
-    if (idx < 0) idx = 0;
-
-    memset(&g_sess[idx], 0, sizeof(g_sess[0]));
-    strncpy(g_sess[idx].sid, sid, sizeof(g_sess[0].sid)-1);
-    g_sess[idx].role = r;
-    g_sess[idx].exp_s = now + 86400;
-
-    std::string cookie = std::string("SID=")+sid+"; Path=/; HttpOnly; Max-Age=86400";
-    httpd_resp_set_hdr(req, "Set-Cookie", cookie.c_str());
-    httpd_resp_set_type(req, "application/json");
-    return httpd_resp_sendstr(req, "{\"ok\":true}\n");
-}
-
-/* ================= ESP config tükör az UI-hoz ================= */
-struct EspCfg {
-    uint16_t NETWORK_ID = 1;
-    uint16_t ZONE_ID    = 0x5A31;
-    uint32_t ANCHOR_ID  = 0x00000001;
-    uint16_t HB_MS      = 10000;
-    uint8_t  LOG_LEVEL  = 1;
-    int32_t  TX_ANT_DLY = 0;
-    int32_t  RX_ANT_DLY = 0;
-    int32_t  BIAS_TICKS = 0;
-    uint8_t  PHY_CH     = 9;
-    uint16_t PHY_SFDTO  = 248;
-
-    /* --- ÚJ: gateway + 3 cél IP-csoport --- */
-    uint32_t GW_ID      = 1;
-
-    char ZONE_CTRL_IP[16] = "0.0.0.0";
-    uint16_t ZONE_CTRL_PORT = 0;
-    uint8_t  ZONE_CTRL_EN   = 0;
-
-    char MAIN_IP[16] = "0.0.0.0";
-    uint16_t MAIN_PORT = 0;
-    uint8_t  MAIN_EN   = 0;
-
-    char SERVICE_IP[16] = "0.0.0.0";
-    uint16_t SERVICE_PORT = 0;
-    uint8_t  SERVICE_EN   = 0;
-
-    char aes_key_hex[65] = "";
-
-    // Saját ethernet:
-    uint8_t  ETH_MODE = 0;         // 0 = DHCP, 1 = statikus
-    char     ETH_IP[16]   = "0.0.0.0";
-    char     ETH_MASK[16] = "0.0.0.0";
-    char     ETH_GW[16]   = "0.0.0.0";
-
-    // ÚJ: metaadatok
-    char ZONE_NAME[32]   = "";
-    char DEVICE_NAME[32] = "";
-    char DEVICE_DESC[64] = "";
-
-} g_cfg;
-
-/* ==== NVS kezelés az ESP confighoz (g_cfg) ==== */
-
-static const char* NVS_NS  = "cfg";
-static const char* NVS_KEY = "esp_cfg";
-
-static bool s_nvs_inited = false;
-
-static void ensure_nvs_init(void)
-{
-    if (s_nvs_inited) return;
-
-    esp_err_t err = nvs_flash_init();
-    if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-        ESP_ERROR_CHECK(nvs_flash_erase());
-        err = nvs_flash_init();
+    if (Object.keys(inpDwm).length > 0) {
+      const bodyDwm = JSON.stringify(inpDwm);
+      try {
+        const r = await fetch('/api/dwm_set', { method:'POST', headers:hdrJson, body:bodyDwm });
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        const j = await r.json().catch(() => ({}));
+        logln('[DWM] SET elküldve: ' + bodyDwm + ' (' + (j.ok ? 'ok' : 'válasz nélkül') + ')');
+      } catch (e) {
+        logln('[DWM] SET hiba: ' + e.message);
+      }
     }
-    if (err == ESP_OK) {
-        s_nvs_inited = true;
-        ESP_LOGI(TAG, "NVS init ok");
-    } else {
-        ESP_LOGW(TAG, "NVS init failed: 0x%x", err);
-    }
+  } finally {
+    setBusy(false);
+  }
 }
 
-/* NVS -> g_cfg. true, ha sikerült valamit betölteni */
-static bool esp_cfg_load_from_nvs(void)
-{
-    ensure_nvs_init();
-    if (!s_nvs_inited) return false;
+const BUSY_BTNS = ['btnEspGet','btnDwmGet','btnApply'];
+let gBusy = false;
 
-    nvs_handle_t h;
-    esp_err_t err = nvs_open(NVS_NS, NVS_READONLY, &h);
-    if (err != ESP_OK) {
-        ESP_LOGI(TAG, "no cfg in NVS (open err=0x%x), using defaults", err);
-        return false;
-    }
-
-    size_t sz = 0;
-    err = nvs_get_blob(h, NVS_KEY, NULL, &sz);
-    if (err != ESP_OK || sz == 0 || sz > sizeof(EspCfg)) {
-        ESP_LOGW(TAG, "no/invalid blob (err=0x%x, sz=%u), using defaults",
-                 err, (unsigned)sz);
-        nvs_close(h);
-        return false;
-    }
-
-    /* induljunk a fordításkori defaultokból,
-       és csak a blob hosszáig írjuk felül */
-    EspCfg tmp = g_cfg;
-    err = nvs_get_blob(h, NVS_KEY, &tmp, &sz);
-    nvs_close(h);
-
-    if (err != ESP_OK) {
-        ESP_LOGW(TAG, "nvs_get_blob err=0x%x, using defaults", err);
-        return false;
-    }
-
-    g_cfg = tmp;
-    ESP_LOGI(TAG, "EspCfg loaded from NVS (size=%u)", (unsigned)sz);
-    return true;
+function setBusy(b){
+  gBusy = b;
+  for(const id of BUSY_BTNS){
+    const el = $(id);
+    if (el) el.disabled = b;
+  }
 }
 
-/* g_cfg -> NVS */
-static void esp_cfg_save_to_nvs(void)
-{
-    ensure_nvs_init();
-    if (!s_nvs_inited) return;
+/* ===== Web Serial ===== */
+let serialReader = null;
 
-    nvs_handle_t h;
-    esp_err_t err = nvs_open(NVS_NS, NVS_READWRITE, &h);
-    if (err != ESP_OK) {
-        ESP_LOGW(TAG, "nvs_open write err=0x%x", err);
-        return;
-    }
+async function openSerial(){
+  if(!('serial' in navigator)){
+    alert('A böngésző nem támogatja a Web Serial API-t');
+    return;
+  }
+  try{
+    const port = await navigator.serial.requestPort();
+    await port.open({ baudRate:115200 });
 
-    err = nvs_set_blob(h, NVS_KEY, &g_cfg, sizeof(g_cfg));
-    if (err != ESP_OK) {
-        ESP_LOGW(TAG, "nvs_set_blob err=0x%x", err);
-        nvs_close(h);
-        return;
-    }
+    const dec = new TextDecoderStream();
+    const enc = new TextEncoderStream();
+    port.readable.pipeTo(dec.writable);
+    enc.readable.pipeTo(port.writable);
 
-    nvs_commit(h);
-    nvs_close(h);
-    ESP_LOGI(TAG, "EspCfg saved to NVS (size=%u)", (unsigned)sizeof(g_cfg));
+    const reader = dec.readable.getReader();
+    serialReader = reader;
+    const writer = enc.writable.getWriter();
+    serialWriter = { write: s => writer.write(new TextEncoder().encode(s)) };
+
+    logln('[SERIAL] megnyitva 115200');
+
+    (async function loop(){
+      for(;;){
+        const { value, done } = await reader.read();
+        if(done) break;
+        if(value) logln(value.replace(/\r?\n/g,'\n'));
+      }
+    })().catch(e => logln('[SERIAL] hiba: '+e));
+  }catch(e){
+    logln('[SERIAL] nyitási hiba: '+e);
+  }
 }
-
-static bool find_key(const char* body, const char* key, const char** val_start){
-    const char* p=strstr(body,key); if(!p) return false;
-    p=strchr(p,':'); if(!p) return false; p++;
-    while(*p==' '||*p=='\"'){ if(*p=='\"'){ *val_start=p; return true; } ++p; }
-    *val_start=p; return true;
-}
-
-static void json_cfg_print(char* buf, size_t sz, const EspCfg& c)
-{
-    snprintf(buf, sz,
-      "{"
-      "\"NETWORK_ID\":%u,"
-      "\"ZONE_ID\":\"0x%04X\","
-      "\"ANCHOR_ID\":\"0x%08X\","
-      "\"HB_MS\":%u,"
-      "\"LOG_LEVEL\":%u,"
-      "\"TX_ANT_DLY\":%d,"
-      "\"RX_ANT_DLY\":%d,"
-      "\"BIAS_TICKS\":%d,"
-      "\"PHY_CH\":%u,"
-      "\"PHY_SFDTO\":%u,"
-
-      "\"GW_ID\":%u,"
-
-      "\"ETH_MODE\":%u,"
-      "\"ETH_IP\":\"%s\","
-      "\"ETH_MASK\":\"%s\","
-      "\"ETH_GW\":\"%s\","
-
-      "\"ZONE_CTRL_IP\":\"%s\","
-      "\"ZONE_CTRL_PORT\":%u,"
-      "\"ZONE_CTRL_EN\":%u,"
-
-      "\"MAIN_IP\":\"%s\","
-      "\"MAIN_PORT\":%u,"
-      "\"MAIN_EN\":%u,"
-
-      "\"SERVICE_IP\":\"%s\","
-      "\"SERVICE_PORT\":%u,"
-      "\"SERVICE_EN\":%u,"
-
-      "\"AES_KEY\":\"%s\","
-      "\"ZONE_NAME\":\"%s\","
-      "\"DEVICE_NAME\":\"%s\","
-      "\"DEVICE_DESC\":\"%s\""
-      "}\n",
-      (unsigned)c.NETWORK_ID,
-      (unsigned)c.ZONE_ID,
-      (unsigned)c.ANCHOR_ID,
-      (unsigned)c.HB_MS,
-      (unsigned)c.LOG_LEVEL,
-      (int)c.TX_ANT_DLY,
-      (int)c.RX_ANT_DLY,
-      (int)c.BIAS_TICKS,
-      (unsigned)c.PHY_CH,
-      (unsigned)c.PHY_SFDTO,
-
-      (unsigned)c.GW_ID,
-
-      (unsigned)c.ETH_MODE,
-      c.ETH_IP,
-      c.ETH_MASK,
-      c.ETH_GW,
-
-      c.ZONE_CTRL_IP,
-      (unsigned)c.ZONE_CTRL_PORT,
-      (unsigned)c.ZONE_CTRL_EN,
-
-      c.MAIN_IP,
-      (unsigned)c.MAIN_PORT,
-      (unsigned)c.MAIN_EN,
-
-      c.SERVICE_IP,
-      (unsigned)c.SERVICE_PORT,
-      (unsigned)c.SERVICE_EN,
-
-      c.aes_key_hex,
-      c.ZONE_NAME,
-      c.DEVICE_NAME,
-      c.DEVICE_DESC
-    );
-}
-
-// forward deklarációk
-static void gcfg_from_globals(void);
-static void globals_from_gcfg(void);
-
-static bool parse_str(const char* body, const char* key, char* out, size_t out_sz){
-    const char* v = nullptr;
-    if (!find_key(body, key, &v)) return false;
-    if (*v != '\"') return false;
-    v++; // idézőjel után
-    const char* end = strchr(v, '\"');
-    if (!end) return false;
-    size_t len = (size_t)(end - v);
-    if (len >= out_sz) len = out_sz - 1;
-    memcpy(out, v, len);
-    out[len] = 0;
-    return true;
-}
-
-static bool parse_u32(const char* body, const char* key, uint32_t& out)
-{
-    const char* v = nullptr;
-    if (!find_key(body, key, &v)) return false;
-
-    char* end = nullptr;
-
-    if (*v == '\"') {
-        // String érték: lehet "10000", "0x2710", stb.
-        v++; // az idézőjel UTÁN vagyunk
-        int base = 10;
-        if (v[0] == '0' && (v[1] == 'x' || v[1] == 'X')) {
-            v += 2;
-            base = 16;
-        }
-        out = strtoul(v, &end, base);
-    } else {
-        // Szám: decimális
-        out = strtoul(v, &end, 10);
-    }
-    return true;
-}
-
-static bool parse_i32(const char* body, const char* key, int32_t& out)
-{
-    const char* v = nullptr;
-    if (!find_key(body, key, &v)) return false;
-
-    char* end = nullptr;
-
-    if (*v == '\"') {
-        v++;
-        int base = 10;
-        if (v[0] == '0' && (v[1] == 'x' || v[1] == 'X')) {
-            v += 2;
-            base = 16;
-        }
-        out = (int32_t)strtol(v, &end, base);
-    } else {
-        out = (int32_t)strtol(v, &end, 10);
-    }
-    return true;
-}
-
-static bool parse_u16(const char* body, const char* key, uint16_t& out){ uint32_t t; if(!parse_u32(body,key,t)) return false; out=(uint16_t)t; return true; }
-static bool parse_u8 (const char* body, const char* key, uint8_t&  out){ uint32_t t; if(!parse_u32(body,key,t)) return false; out=(uint8_t)t;  return true; }
-
-/* ================= /api/config ================= */
-static esp_err_t api_config_get(httpd_req_t* req){
-    if(!require_role(req, ROLE_BLE)) return ESP_FAIL;
-    add_cors(req);
-    add_no_cache(req);
-
-    gcfg_from_globals();  // <- mindig a NET/IPS jelenlegi állapotából származtasd
-
-    char buf[1024];
-    json_cfg_print(buf,sizeof(buf),g_cfg);
-    httpd_resp_set_type(req,"application/json");
-    return httpd_resp_send(req, buf, strlen(buf));
-}
-
-static esp_err_t api_config_post(httpd_req_t* req)
-{
-    if (!require_role(req, ROLE_BLE)) return ESP_FAIL;
-
-    add_cors(req);
-    add_no_cache(req);
-
-    int len = req->content_len;
-    if (len <= 0) {
-        return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "empty");
-    }
-
-    std::vector<char> body(len + 1, 0);
-    int off = 0;
-    while (off < len) {
-        int r = httpd_req_recv(req, body.data() + off, len - off);
-        if (r <= 0) {
-            return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "recv");
-        }
-        off += r;
-    }
-
-    // 1) JSON → g_cfg (csak a benne lévő kulcsok írják felül)
-    parse_u16(body.data(), "\"NETWORK_ID\"", g_cfg.NETWORK_ID);
-    parse_u16(body.data(), "\"ZONE_ID\""   , g_cfg.ZONE_ID);
-    {
-        uint32_t t;
-        if (parse_u32(body.data(), "\"ANCHOR_ID\"", t)) {
-            g_cfg.ANCHOR_ID = t;
-        }
-    }
-    parse_u16(body.data(), "\"HB_MS\""     , g_cfg.HB_MS);
-    parse_u8 (body.data(), "\"LOG_LEVEL\"" , g_cfg.LOG_LEVEL);
-    parse_i32(body.data(), "\"TX_ANT_DLY\"", g_cfg.TX_ANT_DLY);
-    parse_i32(body.data(), "\"RX_ANT_DLY\"", g_cfg.RX_ANT_DLY);
-    parse_i32(body.data(), "\"BIAS_TICKS\"", g_cfg.BIAS_TICKS);
-    parse_u8 (body.data(), "\"PHY_CH\""    , g_cfg.PHY_CH);
-    parse_u16(body.data(), "\"PHY_SFDTO\"" , g_cfg.PHY_SFDTO);
-
-    // ÚJ: GW + 3 IP csoport
-    parse_u32(body.data(), "\"GW_ID\"", g_cfg.GW_ID);
-
-    parse_u8 (body.data(), "\"ETH_MODE\"", g_cfg.ETH_MODE);
-    parse_str(body.data(), "\"ETH_IP\""   , g_cfg.ETH_IP,   sizeof(g_cfg.ETH_IP));
-    parse_str(body.data(), "\"ETH_MASK\"" , g_cfg.ETH_MASK, sizeof(g_cfg.ETH_MASK));
-    parse_str(body.data(), "\"ETH_GW\""   , g_cfg.ETH_GW,   sizeof(g_cfg.ETH_GW));
-
-    parse_str(body.data(), "\"ZONE_CTRL_IP\""  , g_cfg.ZONE_CTRL_IP,   sizeof(g_cfg.ZONE_CTRL_IP));
-    parse_u16(body.data(), "\"ZONE_CTRL_PORT\"", g_cfg.ZONE_CTRL_PORT);
-    parse_u8 (body.data(), "\"ZONE_CTRL_EN\""  , g_cfg.ZONE_CTRL_EN);
-
-    parse_str(body.data(), "\"MAIN_IP\""   , g_cfg.MAIN_IP,   sizeof(g_cfg.MAIN_IP));
-    parse_u16(body.data(), "\"MAIN_PORT\"", g_cfg.MAIN_PORT);
-    parse_u8 (body.data(), "\"MAIN_EN\""  , g_cfg.MAIN_EN);
-
-    parse_str(body.data(), "\"SERVICE_IP\""  , g_cfg.SERVICE_IP,   sizeof(g_cfg.SERVICE_IP));
-    parse_u16(body.data(), "\"SERVICE_PORT\"", g_cfg.SERVICE_PORT);
-    parse_u8 (body.data(), "\"SERVICE_EN\""  , g_cfg.SERVICE_EN);
-
-    parse_str(body.data(), "\"AES_KEY\"", g_cfg.aes_key_hex, sizeof(g_cfg.aes_key_hex));
-
-    // ÚJ: metaadatok (zóna név, eszköz név, leírás)
-    parse_str(body.data(), "\"ZONE_NAME\"",   g_cfg.ZONE_NAME,   sizeof(g_cfg.ZONE_NAME));
-    parse_str(body.data(), "\"DEVICE_NAME\"", g_cfg.DEVICE_NAME, sizeof(g_cfg.DEVICE_NAME));
-    parse_str(body.data(), "\"DEVICE_DESC\"", g_cfg.DEVICE_DESC, sizeof(g_cfg.DEVICE_DESC));
-
-    // 2) g_cfg → NET / IPS (rendszer-szintű módosítások)
-    globals_from_gcfg();
-
-    // 3) tartós mentés NVS-be
-    esp_cfg_save_to_nvs();
-
-    ethernet_reapply_ip_from_net();
-
-    httpd_resp_set_type(req, "application/json");
-    return httpd_resp_sendstr(req, "{\"ok\":true}\n");
-
-}
-
-static esp_err_t api_reboot(httpd_req_t* req) {
-    if (!require_role(req, ROLE_BLE)) return ESP_FAIL;  // ROLE_ROOT helyett
-    httpd_resp_set_type(req, "application/json");
-    httpd_resp_sendstr(req, "{\"ok\":true}");
-
-    vTaskDelay(pdMS_TO_TICKS(200));
-    esp_restart();
-    return ESP_OK;
-}
-
-/* NET, IPS -> g_cfg (UI tükör) */
-static void gcfg_from_globals(void)
-{
-    // saját IP
-    snprintf(g_cfg.ETH_IP,   sizeof(g_cfg.ETH_IP),   IPSTR, IP2STR(&NET.ip));
-    snprintf(g_cfg.ETH_MASK, sizeof(g_cfg.ETH_MASK), IPSTR, IP2STR(&NET.mask));
-    snprintf(g_cfg.ETH_GW,   sizeof(g_cfg.ETH_GW),   IPSTR, IP2STR(&NET.gw));
-    g_cfg.ETH_MODE = NET.use_dhcp ? 0 : 1;
-
-    // IPS célok → ZONE / MAIN / SERVICE
-    snprintf(g_cfg.ZONE_CTRL_IP, sizeof(g_cfg.ZONE_CTRL_IP),
-             IPSTR, IP2STR(&IPS.dest[0].dest_ip));
-    g_cfg.ZONE_CTRL_PORT = IPS.dest[0].dest_port;
-    g_cfg.ZONE_CTRL_EN   = IPS.dest[0].enabled;
-
-    snprintf(g_cfg.MAIN_IP, sizeof(g_cfg.MAIN_IP),
-             IPSTR, IP2STR(&IPS.dest[1].dest_ip));
-    g_cfg.MAIN_PORT = IPS.dest[1].dest_port;
-    g_cfg.MAIN_EN   = IPS.dest[1].enabled;
-
-    snprintf(g_cfg.SERVICE_IP, sizeof(g_cfg.SERVICE_IP),
-             IPSTR, IP2STR(&IPS.dest[2].dest_ip));
-    g_cfg.SERVICE_PORT = IPS.dest[2].dest_port;
-    g_cfg.SERVICE_EN   = IPS.dest[2].enabled;
-
-    g_cfg.GW_ID = IPS.gw_id;
-}
-
-/* backwards kompat: ha máshol is hívják */
-static void sync_cfg_from_globals(void)
-{
-    gcfg_from_globals();
-}
-
-/* g_cfg -> NET, IPS (rendszer-szintű beállítás) */
-static void globals_from_gcfg(void)
-{
-    NET.use_dhcp = (g_cfg.ETH_MODE == 0);  // 0 = DHCP, 1 = statikus
-
-    ip4addr_aton(g_cfg.ETH_IP,   &NET.ip);
-    ip4addr_aton(g_cfg.ETH_MASK, &NET.mask);
-    ip4addr_aton(g_cfg.ETH_GW,   &NET.gw);
-
-    IPS.gw_id = g_cfg.GW_ID;
-
-    ip4addr_aton(g_cfg.ZONE_CTRL_IP, &IPS.dest[0].dest_ip);
-    IPS.dest[0].dest_port = g_cfg.ZONE_CTRL_PORT;
-    IPS.dest[0].enabled   = g_cfg.ZONE_CTRL_EN;
-
-    ip4addr_aton(g_cfg.MAIN_IP, &IPS.dest[1].dest_ip);
-    IPS.dest[1].dest_port = g_cfg.MAIN_PORT;
-    IPS.dest[1].enabled   = g_cfg.MAIN_EN;
-
-    ip4addr_aton(g_cfg.SERVICE_IP, &IPS.dest[2].dest_ip);
-    IPS.dest[2].dest_port = g_cfg.SERVICE_PORT;
-    IPS.dest[2].enabled   = g_cfg.SERVICE_EN;
-
-    // AES kulcs (ha meg van adva)
-    if (g_cfg.aes_key_hex[0] != '\0') {
-        aes_sender_set_key_hex(g_cfg.aes_key_hex);
-    }
-
-}
-
-static esp_err_t api_meta_get(httpd_req_t* req)
-{
-    add_cors(req);
-    add_no_cache(req);
-
-    // Itt feltételezzük, hogy g_cfg már szinkronban van NVS-sel
-    // (webserver_start elején esp_cfg_load_from_nvs + globals_from_gcfg/gcfg_from_globals)
-
-    char buf[256];
-    int n = snprintf(buf, sizeof(buf),
-        "{"
-          "\"zone_name\":\"%s\","
-          "\"device_name\":\"%s\","
-          "\"device_desc\":\"%s\""
-        "}\n",
-        g_cfg.ZONE_NAME,
-        g_cfg.DEVICE_NAME,
-        g_cfg.DEVICE_DESC
-    );
-
-    httpd_resp_set_type(req, "application/json");
-    return httpd_resp_send(req, buf, n);
-}
-
-/* ================= /api/status ================= */
-extern net_config_t NET;
-extern ips_config_t IPS;
-extern volatile int eth_up;   // ha máshol nem kell, ezt akár el is hagyhatod
-extern volatile int ble_up;
-
-static esp_err_t api_status_get(httpd_req_t* req){
-    add_cors(req);
-    add_no_cache(req);
-
-    const char* st = (g_status.state==ST_OK   ? "ok"   :
-                      g_status.state==ST_WARN ? "warn" :
-                      g_status.state==ST_ERR  ? "err"  : "off");
-
-    bool eth_ok = (NET.ip.addr != 0);
-    // HB / anchor állapot (BLE TLV-ből)
-    uint8_t  hb_st   = hb_get_status();
-    uint32_t hb_up   = hb_get_uptime_ms();
-    uint32_t hb_sync = hb_get_sync_ms();
-
-    // "van HB" ha valaha jött már heartbeat
-    bool have_hb = (hb_up != 0);
-
-    char hb_text[96];
-    const char *hb_txt_ptr = "Anchor állapot: ismeretlen";
-    const char *hb_level   = "warn";   // ok / warn / err
-
-    if (have_hb) {
-        // mindig a legutóbbi HB alapján írunk
-        anchor_status_to_text(hb_st, hb_text, sizeof(hb_text));
-        hb_txt_ptr = hb_text;
-
-        if (!(hb_st & ST_BLE_LINK) || !(hb_st & ST_CFG_NOTIFY)) {
-            hb_level = "err";
-        } else if (hb_st & ST_SYNC_LOCK) {
-            hb_level = (hb_st & ST_SYNC_PRELOCK) ? "warn" : "ok";
-        } else if (hb_st & ST_SYNC_PRELOCK) {
-            hb_level = "warn";
-        } else {
-            hb_level = "err";
-        }
-    } else {
-        // még nem jött egyetlen HB sem → fallback
-        if (g_status.state == ST_OK) {
-            hb_txt_ptr = "Anchor: OK (csak összefoglalt állapot)";
-            hb_level   = "ok";
-        } else if (g_status.state == ST_WARN) {
-            hb_txt_ptr = "Anchor: figyelmeztetés (csak összefoglalt állapot)";
-            hb_level   = "warn";
-        } else if (g_status.state == ST_ERR) {
-            hb_txt_ptr = "Anchor: hiba (csak összefoglalt állapot)";
-            hb_level   = "err";
-        } else {
-            hb_txt_ptr = "Anchor állapot: nincs adat";
-            hb_level   = "warn";
-        }
-    }
-
-    char buf[1024];
-    int n = snprintf(buf, sizeof(buf),
-        "{"
-          "\"anchor\":\"%s\","
-          "\"id\":%u,"
-          "\"last_s\":%.2f,"
-          "\"last_v\":%.2f,"
-          "\"state\":\"%s\","
-          "\"eth_up\":%d,"
-          "\"ble_up\":%d,"
-          "\"zone_en\":%u,"
-          "\"main_en\":%u,"
-          "\"service_en\":%u,"
-          "\"hb_status\":%u,"
-          "\"hb_uptime\":%u,"
-          "\"hb_sync_ms\":%u,"
-          "\"hb_text\":\"%s\","
-          "\"hb_level\":\"%s\""
-        "}\n",
-        g_status.anchor,
-        g_status.id,
-        g_status.last_meas_s,
-        g_status.last_volt,
-        st,
-        eth_ok ? 1 : 0,
-        ble_up,
-        (unsigned)IPS.dest[0].enabled,
-        (unsigned)IPS.dest[1].enabled,
-        (unsigned)IPS.dest[2].enabled,
-        (unsigned)hb_st,
-        (unsigned)hb_up,
-        (unsigned)hb_sync,
-        hb_txt_ptr,
-        hb_level
-    );
-
-    httpd_resp_set_type(req,"application/json");
-    return httpd_resp_send(req, buf, n);
-}
-/* ================= Server start/stop ================= */
-esp_err_t webserver_start(){
-    if (s_http) return ESP_OK;
-
-    /* 1) NVS betöltés, stb... */
-    bool have_nvs_cfg = esp_cfg_load_from_nvs();
-    if (have_nvs_cfg) {
-        globals_from_gcfg();
-        ethernet_reapply_ip_from_net();
-    } else {
-        gcfg_from_globals();
-    }
-
-    aes_sender_init();
-    if (g_cfg.aes_key_hex[0] != '\0') {
-        aes_sender_set_key_hex(g_cfg.aes_key_hex);
-    }
-
-    httpd_config_t cfg = HTTPD_DEFAULT_CONFIG();
-    cfg.uri_match_fn = httpd_uri_match_wildcard;
-    cfg.max_uri_handlers = 24;
-    cfg.stack_size = 8192;
-
-    ESP_ERROR_CHECK(httpd_start(&s_http, &cfg));
-
-    // BLE bridge
-    ble_http_bridge_init();
-    http_register_routes(s_http);   // /api/dwm_get
-
-    // *** ITT REGISZTRÁLD A STATS API-T + /stats OLDALT ***
-    web_stats_init();
-    web_stats_register_handlers(s_http);   // ebben van /api/stats
-
-    // Pages
-    httpd_uri_t u{};
-    u.method=HTTP_GET;
-    u.uri="/login";            u.handler=login_get;        httpd_register_uri_handler(s_http,&u);
-    u.uri="/diag";             u.handler=diag_get;         httpd_register_uri_handler(s_http,&u);
-    u.uri="/ble-data";         u.handler=ble_get;          httpd_register_uri_handler(s_http,&u);
-    u.uri="/admin";            u.handler=admin_get;        httpd_register_uri_handler(s_http,&u);
-    u.uri="/super_user.html";  u.handler=super_user_get;   httpd_register_uri_handler(s_http,&u);
-
-    u.method = HTTP_GET;
-    u.uri="/stats";   u.handler=stats_get;  httpd_register_uri_handler(s_http,&u);
-
-    // API GET-ek
-    u.uri="/api/status";       u.handler=api_status_get;   httpd_register_uri_handler(s_http,&u);
-
-    // ÚJ: meta
-    httpd_uri_t get_meta{};
-    get_meta.method = HTTP_GET;
-    get_meta.uri    = "/api/meta";
-    get_meta.handler= api_meta_get;
-    httpd_register_uri_handler(s_http, &get_meta);
-
-    httpd_uri_t get_cfg{};
-    get_cfg.method=HTTP_GET;
-    get_cfg.uri="/api/config";
-    get_cfg.handler=api_config_get;
-    httpd_register_uri_handler(s_http,&get_cfg);
-
-    // API POST-ok
-    httpd_uri_t post_cfg{};
-    post_cfg.method=HTTP_POST;
-    post_cfg.uri="/api/config";
-    post_cfg.handler=api_config_post;
-    httpd_register_uri_handler(s_http,&post_cfg);
-
-    // AUTH: POST + OPTIONS (preflight)
-    httpd_uri_t auth_post{};
-    auth_post.method=HTTP_POST;
-    auth_post.uri="/auth/login";
-    auth_post.handler=auth_login_post;
-    httpd_register_uri_handler(s_http,&auth_post);
-
-    // Preflight OPTIONS minden érintett útvonalra
-    httpd_uri_t opt{};
-    opt.method=HTTP_OPTIONS;  opt.uri="/auth/login";   opt.handler=options_ok; httpd_register_uri_handler(s_http,&opt);
-    opt.uri="/api/config";    httpd_register_uri_handler(s_http,&opt);
-    opt.uri="/api/status";    httpd_register_uri_handler(s_http,&opt);
-    opt.uri="/api/dwm_get";   httpd_register_uri_handler(s_http,&opt);
-    opt.uri="/api/dwm_last";  httpd_register_uri_handler(s_http,&opt);   // ÚJ
-
-    // Reboot API
-    httpd_uri_t uri_reboot = {
-        .uri      = "/api/reboot",
-        .method   = HTTP_POST,
-        .handler  = api_reboot,
-        .user_ctx = NULL
-    };
-    httpd_register_uri_handler(s_http, &uri_reboot);
-
-    // Super user page
-    httpd_uri_t super_uri = {
-        .uri      = "/super",
-        .method   = HTTP_GET,
-        .handler  = super_user_get,
-        .user_ctx = nullptr
-    };
-    httpd_register_uri_handler(s_http, &super_uri);
-
-    // Tooltipek JS
-    httpd_uri_t super_tooltips_uri = {
-        .uri      = "/super_tooltips.js",
-        .method   = HTTP_GET,
-        .handler  = super_tooltips_get,
-        .user_ctx = nullptr
-    };
-    httpd_register_uri_handler(s_http, &super_tooltips_uri);
-
-    // Root és catch-all → login  **LEGUTOLSÓNAK**
-    httpd_uri_t root{};
-    root.method  = HTTP_GET;
-    root.uri     = "/";
-    root.handler = login_get;
-    httpd_register_uri_handler(s_http, &root);
-
-    httpd_uri_t any{};
-    any.method  = HTTP_GET;
-    any.uri     = "/*";
-    any.handler = login_get;
-    httpd_register_uri_handler(s_http, &any);
-
-    ESP_LOGI(TAG,"webserver started");
-
-    return ESP_OK;
-}
-
-esp_err_t webserver_stop(){
-    if(!s_http) return ESP_OK;
-    httpd_stop(s_http); s_http=nullptr; return ESP_OK;
-}
-
+renderAll();
+applyFixedTooltips();   // <<< ÚJ – a fix inputok title-jei
+
+// Oldalbetöltéskor automatikusan:
+//  - ESP config lekérdezés (/api/config) – gyors
+//  - DWM RAM-cache lekérdezés (/api/dwm_last) – gyors
+doEspGet();
+doDwmGetCached();
+
+$('btnLogout').addEventListener('click', () => {
+  // Session cookie érvénytelenítése
+  document.cookie = "SID=; Path=/; Max-Age=0;";
+
+  // Átirányítás a login oldalra
+  window.location.href = "/login";
+});
+
+$('btnRebootEsp').addEventListener('click', async () => {
+  if (!confirm("Biztosan újraindítod az ESP-t?")) return;
+
+  try {
+    const r = await fetch('/api/reboot', {
+      method: 'POST',
+      headers: { 'Authorization': 'Basic ' + btoa('admin:admin') }
+    });
+    logln('[ESP] újraindítás kérve');
+
+    // Kis várakozás, majd reload
+    setTimeout(() => { location.reload(); }, 1500);
+
+  } catch (e) {
+    logln('[ESP] reboot hiba: ' + e.message);
+  }
+});
+
+$('btnToStats').addEventListener('click', () => {
+  window.location.href = "/stats";
+});
+
+// Új eseménykezelő a jelszó gombhoz
+$('btnPasswd').addEventListener('click', () => {
+  // átirányítás az új jelszó módosító oldalra
+  window.location.href = "/passwd";
+});
+
+</script>
+</body>
+</html>

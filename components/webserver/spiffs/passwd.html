@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="hu">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Jelszavak módosítása</title>
+<style>
+  /* Alap színek és hátterek megegyeznek a többi oldal stílusával */
+  :root{
+    --bg1:#071623;
+    --bg2:#0b2236;
+    --card:#0f1f2e;
+    --muted:#7c8aa3;
+    --text:#e8eef7;
+    --accent:#2da8ff;
+    --accent2:#57b6ff;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0;min-height:100vh;color:var(--text);
+    font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,Ubuntu,sans-serif;
+    background:
+      radial-gradient(1100px 700px at 22% 28%, #0b2f58 0%, transparent 62%),
+      radial-gradient(1100px 700px at 78% 62%, #0a2a49 0%, transparent 62%),
+      linear-gradient(180deg, var(--bg1), var(--bg2)),
+      repeating-linear-gradient(0deg, rgba(255,255,255,.03) 0 1px, transparent 1px 32px),
+      repeating-linear-gradient(90deg, rgba(255,255,255,.03) 0 1px, transparent 1px 32px);
+    background-blend-mode:screen,screen,normal,normal,normal;
+  }
+  .wrap{min-height:100svh;display:grid;place-items:center;padding:24px}
+  .card{
+    width:min(620px,92vw);
+    background:color-mix(in srgb, var(--card) 92%, #000 8%);
+    border:1px solid rgba(255,255,255,.06);
+    border-radius:22px;
+    box-shadow:0 18px 60px rgba(0,0,0,.45);
+    padding:22px 22px 16px
+  }
+  h2{margin-top:0;margin-bottom:12px;font-size:18px}
+  .row{display:flex;gap:10px;margin-bottom:8px}
+  .col{flex:1}
+  label{display:block;font-size:12px;color:var(--muted);margin:4px 2px 6px}
+  input[type=password]{
+    width:100%;padding:11px 12px;border-radius:12px;outline:0;
+    border:1px solid rgba(255,255,255,.08);background:#0a1825;color:var(--text)
+  }
+  .btn{
+    width:100%;margin-top:14px;padding:11px 14px;border-radius:14px;border:0;cursor:pointer;
+    background:linear-gradient(180deg,var(--accent),var(--accent2));color:#00203a;font-weight:800
+  }
+  .foot{color:var(--muted);font-size:11px;text-align:center;margin-top:10px}
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <form class="card" onsubmit="event.preventDefault(); changePassword();">
+      <h2>Jelszavak módosítása</h2>
+      <div class="row">
+        <div class="col">
+          <label for="diag_pwd">diag felhasználó új jelszó</label>
+          <input id="diag_pwd" type="password" placeholder="új jelszó">
+        </div>
+      </div>
+      <div class="row">
+        <div class="col">
+          <label for="admin_pwd">admin felhasználó új jelszó</label>
+          <input id="admin_pwd" type="password" placeholder="új jelszó">
+        </div>
+      </div>
+      <div class="row">
+        <div class="col">
+          <label for="root_pwd">root felhasználó új jelszó</label>
+          <input id="root_pwd" type="password" placeholder="új jelszó">
+        </div>
+      </div>
+      <button class="btn" type="submit">Mentés</button>
+      <div class="foot" id="msg"></div>
+    </form>
+  </div>
+<script>
+async function changePassword(){
+  const diag  = document.getElementById('diag_pwd').value.trim();
+  const admin = document.getElementById('admin_pwd').value.trim();
+  const root  = document.getElementById('root_pwd').value.trim();
+  const msg   = document.getElementById('msg');
+  msg.textContent = '';
+  try{
+    const body = { diag, admin, root };
+    const r = await fetch('/api/change_password', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(body)
+    });
+    if(!r.ok){
+      msg.textContent = 'Hiba a jelszavak módosításakor.';
+      return;
+    }
+    msg.textContent = 'Jelszavak frissítve.';
+  }catch(e){
+    msg.textContent = 'Hálózati hiba.';
+  }
+}
+</script>
+</body>
+</html>
