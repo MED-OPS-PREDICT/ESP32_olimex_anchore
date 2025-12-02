@@ -154,7 +154,7 @@ static esp_err_t options_ok(httpd_req_t* req){
 static esp_err_t send_file(httpd_req_t* req, const char* path, const char* ctype);
 
 static esp_err_t stats_get(httpd_req_t* r){
-    if(!require_role(r, ROLE_BLE)) return ESP_FAIL;
+    if(!require_role(r, ROLE_DIAG)) return ESP_FAIL;
     return send_file(r, "/spiffs/web_stats.html", "text/html");
 }
 
@@ -209,7 +209,7 @@ static esp_err_t passwd_get(httpd_req_t* r){
 
 static esp_err_t super_tooltips_get(httpd_req_t *r)
 {
-    if (!require_role(r, ROLE_BLE)) {
+    if (!require_role(r, ROLE_DIAG)) {
         return ESP_FAIL;   // ugyanaz a minta, mint diag_get / stats_get stb.
     }
     return send_file(r, "/spiffs/super_tooltips.js", "application/javascript");
