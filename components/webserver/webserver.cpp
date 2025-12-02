@@ -1036,9 +1036,9 @@ esp_err_t webserver_start() {
     page.method = HTTP_GET;
 
     page.uri = "/login";            page.handler = login_get;       httpd_register_uri_handler(s_http,&page);
-    page.uri = "/diag";             page.handler = diag_get;        httpd_register_uri_handler(s_http,&page);
+    page.uri = "/diag.html";        page.handler = diag_get;        httpd_register_uri_handler(s_http, &page);
     page.uri = "/ble-data";         page.handler = ble_get;         httpd_register_uri_handler(s_http,&page);
-    page.uri = "/admin";            page.handler = admin_get;       httpd_register_uri_handler(s_http,&page);
+    page.uri = "/admin.html";       page.handler = admin_get;       httpd_register_uri_handler(s_http, &page);
     page.uri = "/super_user.html";  page.handler = super_user_get;  httpd_register_uri_handler(s_http,&page);
     page.uri = "/passwd";           page.handler = passwd_get;      httpd_register_uri_handler(s_http,&page);
 
