@@ -344,7 +344,11 @@
 
         <div></div>
         <div class="toolbar">
+            <button class="btn ghost" id="btnBleLoad">BLE betöltés</button>
+            <button class="btn"       id="btnBleSave">BLE mentés</button>
+
             <button class="btn ghost" id="btnToStats">Statisztika</button>
+
             <!-- Új gomb jelszóváltoztatáshoz -->
             <button class="btn ghost" id="btnPasswd">Jelszavak</button>
             <button class="btn ghost" id="btnRebootEsp">Újraindítás</button>
@@ -557,6 +561,8 @@ window.SUPER_TOOLTIPS = {
 /* ===== globális hibanapló ===== */
 window.addEventListener('error', e => { logln('[JS-ERROR] '+(e.message||e)); });
 window.addEventListener('unhandledrejection', e => { logln('[JS-PROMISE] '+(e.reason||e)); });
+$('btnBleLoad').addEventListener('click', loadBleCfgFromEsp);
+$('btnBleSave').addEventListener('click', saveBleCfgToEsp);
 
 /* ===== állapot ===== */
 let g = { dev:null, server:null, svc:null, cfg:null, data:null, esp:{}, dwm:{} };
@@ -1195,6 +1201,56 @@ $('btnPasswd').addEventListener('click', () => {
   // átirányítás az új jelszó módosító oldalra
   window.location.href = "/passwd";
 });
+
+async function loadBleCfgFromEsp() {
+  try {
+    const r = await fetch('/api/ble_cfg', { cache: 'no-store' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const c = await r.json();
+
+    $('svcUuid').value  = c.BLE_SVC_UUID  || '';
+    $('cfgUuid').value  = c.BLE_CFG_UUID  || '';
+    $('dataUuid').value = c.BLE_DATA_UUID || '';
+    $('reqId').value    = (c.BLE_REQ_ID != null ? c.BLE_REQ_ID : 1);
+
+    if (c.BLE_NAME) {
+      // ha akarsz külön mezőt a BLE névre, itt is be tudod tölteni
+      logln('[BLE] Név: ' + c.BLE_NAME);
+    }
+
+    logln('[BLE] Konfig betöltve az ESP-ről.');
+  } catch (e) {
+    logln('[BLE] Hiba a betöltésnél: ' + e);
+  }
+}
+
+async function saveBleCfgToEsp() {
+  try {
+    const body = {
+      BLE_NAME:      'UWB_ANCHOR_01',  // vagy később külön inputból
+      BLE_SVC_UUID:  $('svcUuid').value.trim(),
+      BLE_DATA_UUID: $('dataUuid').value.trim(),
+      BLE_CFG_UUID:  $('cfgUuid').value.trim(),
+      BLE_REQ_ID:    parseInt($('reqId').value, 10) || 1
+    };
+
+    const r = await fetch('/api/ble_cfg', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+
+    const resp = await r.json();
+    if (resp.ok) {
+      logln('[BLE] Konfig elmentve NVS-be (ESP).');
+    } else {
+      logln('[BLE] Mentés válasz: ' + JSON.stringify(resp));
+    }
+  } catch (e) {
+    logln('[BLE] Hiba a mentésnél: ' + e);
+  }
+}
 
 </script>
 </body>
