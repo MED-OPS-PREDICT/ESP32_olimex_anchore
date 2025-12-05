@@ -596,7 +596,7 @@ function getInputTooltip(id){
 
 // Fix mezők (svcUuid, cfgUuid, ...) tooltipeinek beállítása
 function applyFixedTooltips(){
-  if (!window.SUPER_TOOLTIPS || !SUPEwR_TOOLTIPS.inputs) return;
+  if (!window.SUPER_TOOLTIPS || !SUPER_TOOLTIPS.inputs) return;
   Object.entries(SUPER_TOOLTIPS.inputs).forEach(([id, text]) => {
     const el = document.getElementById(id);
     if (el && !el.title) el.title = text;
@@ -1230,8 +1230,13 @@ async function loadBleCfgFromEsp() {
 
 async function saveBleCfgToEsp() {
   try {
+    const nameInput = $('bleName');
+    const bleName = (nameInput && nameInput.value.trim())
+      ? nameInput.value.trim()
+      : 'UWB_ANCHOR_01';
+
     const body = {
-      BLE_NAME:      $('bleName')?.value.trim(),
+      BLE_NAME:      bleName,
       BLE_SVC_UUID:  $('svcUuid').value.trim(),
       BLE_DATA_UUID: $('dataUuid').value.trim(),
       BLE_CFG_UUID:  $('cfgUuid').value.trim(),
@@ -1246,8 +1251,22 @@ async function saveBleCfgToEsp() {
     if (!r.ok) throw new Error('HTTP ' + r.status);
 
     const resp = await r.json();
+
     if (resp.ok) {
-      logln('[BLE] Konfig elmentve NVS-be (ESP).');
+      logln('[BLE] Konfig elmentve NVS-be (ESP). Újraindítás...');
+
+      try {
+        await fetch('/api/reboot', {
+          method: 'POST',
+          headers: { 'Authorization': 'Basic ' + btoa('admin:admin') }
+        });
+        logln('[ESP] újraindítás kérve (BLE mentés után).');
+      } catch (e2) {
+        logln('[ESP] reboot hiba: ' + e2.message);
+      }
+
+      setTimeout(() => { location.reload(); }, 1500);
+
     } else {
       logln('[BLE] Mentés válasz: ' + JSON.stringify(resp));
     }
