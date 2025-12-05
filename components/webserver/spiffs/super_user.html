@@ -339,6 +339,9 @@
         <label>DATA karakterisztika</label>
         <input class="inp" id="dataUuid" value="abcdef01-1234-5678-1234-1234567890ab">
 
+        <label>BLE név</label>
+        <input class="inp" id="bleName" placeholder="UWB_ANCHOR_01">
+
         <label>Req ID</label>
         <input class="inp mono" id="reqId" value="1">
 
@@ -558,6 +561,11 @@ window.SUPER_TOOLTIPS = {
 </script>
 
 <script>
+
+const $  = id => document.getElementById(id);
+const qs = s  => document.querySelector(s);
+let serialWriter = null;
+
 /* ===== globális hibanapló ===== */
 window.addEventListener('error', e => { logln('[JS-ERROR] '+(e.message||e)); });
 window.addEventListener('unhandledrejection', e => { logln('[JS-PROMISE] '+(e.reason||e)); });
@@ -574,9 +582,6 @@ let statusPeriodMs = 5000;   // státusz polling periódus
 let statusInterval = null;   // setInterval handle
 
 /* ===== util + soros írható log ===== */
-const $  = id => document.getElementById(id);
-const qs = s  => document.querySelector(s);
-let serialWriter = null;
 
 // Tooltip helper – külső fájlból (super_tooltips.js)
 function getKeyTooltip(key){
@@ -591,7 +596,7 @@ function getInputTooltip(id){
 
 // Fix mezők (svcUuid, cfgUuid, ...) tooltipeinek beállítása
 function applyFixedTooltips(){
-  if (!window.SUPER_TOOLTIPS || !SUPER_TOOLTIPS.inputs) return;
+  if (!window.SUPER_TOOLTIPS || !SUPEwR_TOOLTIPS.inputs) return;
   Object.entries(SUPER_TOOLTIPS.inputs).forEach(([id, text]) => {
     const el = document.getElementById(id);
     if (el && !el.title) el.title = text;
@@ -1213,9 +1218,8 @@ async function loadBleCfgFromEsp() {
     $('dataUuid').value = c.BLE_DATA_UUID || '';
     $('reqId').value    = (c.BLE_REQ_ID != null ? c.BLE_REQ_ID : 1);
 
-    if (c.BLE_NAME) {
-      // ha akarsz külön mezőt a BLE névre, itt is be tudod tölteni
-      logln('[BLE] Név: ' + c.BLE_NAME);
+    if ($('bleName')) {
+        $('bleName').value = c.BLE_NAME || '';
     }
 
     logln('[BLE] Konfig betöltve az ESP-ről.');
@@ -1227,7 +1231,7 @@ async function loadBleCfgFromEsp() {
 async function saveBleCfgToEsp() {
   try {
     const body = {
-      BLE_NAME:      'UWB_ANCHOR_01',  // vagy később külön inputból
+      BLE_NAME:      $('bleName')?.value.trim(),
       BLE_SVC_UUID:  $('svcUuid').value.trim(),
       BLE_DATA_UUID: $('dataUuid').value.trim(),
       BLE_CFG_UUID:  $('cfgUuid').value.trim(),
