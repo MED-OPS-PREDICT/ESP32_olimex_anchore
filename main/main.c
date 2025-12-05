@@ -131,8 +131,20 @@ void app_main(void)
     web_stats_init();
     webserver_start();
 
+    // BLE konfig beolvasása a NVS-ből (webserver a load-ot hívja, de ha biztosra akarsz menni, meghívhatod egyszer itt is)
+    const web_ble_cfg_t* bcfg = web_ble_cfg_get();
+    const char* ble_name = (bcfg && bcfg->name[0]) ? bcfg->name : "UWB_ANCHOR_01";
+
+    if (bcfg && bcfg->svc_uuid[0] && bcfg->data_uuid[0] && bcfg->cfg_uuid[0]) {
+        if (ble_set_uuids_from_strings(bcfg->svc_uuid, bcfg->data_uuid, bcfg->cfg_uuid) != ESP_OK) {
+            ESP_LOGW(TAG, "BLE UUID parse error, using defaults");
+        }
+    }
+
     /* BLE: opcionális name filter, pl. "UWB_ANCHOR_01" */
-    ble_start("UWB_ANCHOR_01", on_ble_notify);
+    // ble_start("UWB_ANCHOR_01", on_ble_notify);
+    ble_start(ble_name, on_ble_notify);
+
     uwb_cfg_cli_init();
     ble_register_notify_cb(uwb_notify_cb);
 

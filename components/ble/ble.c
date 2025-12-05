@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdbool.h>
+#include <ctype.h>
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -121,6 +122,11 @@ static const uint8_t UWB_SVC_UUID_128_BE[16]= { 0x12,0x34,0x56,0x78,0x12,0x34,0x
 static const uint8_t UWB_DATA_UUID_128[16] = { 0xAB,0x90,0x78,0x56,0x34,0x12,0x34,0x12,0x78,0x56,0x34,0x12,0x01,0xEF,0xCD,0xAB };
 static const uint8_t UWB_CFG_UUID_128[16]  = { 0xAB,0x90,0x78,0x56,0x34,0x12,0x34,0x12,0x78,0x56,0x34,0x12,0x02,0xEF,0xCD,0xAB };
 
+static uint8_t s_svc_uuid_128[16];
+static uint8_t s_data_uuid_128[16];
+static uint8_t s_cfg_uuid_128[16];
+static bool    s_uuid_overridden = false;
+
 static esp_bt_uuid_t uuid16(uint16_t u){ esp_bt_uuid_t x={.len=ESP_UUID_LEN_16,.uuid.uuid16=u}; return x; }
 static esp_bt_uuid_t uuid128(const uint8_t u[16]){ esp_bt_uuid_t x={.len=ESP_UUID_LEN_128}; memcpy(x.uuid.uuid128,u,16); return x; }
 
@@ -215,6 +221,47 @@ static void __attribute__((unused)) log_tlv_compact(uint8_t section, uint8_t t, 
     else if (l==2) ESP_LOGI(TAG, "%s.%s=%u", sec, nm, (unsigned)rd16be(v));
     else if (l==4) ESP_LOGI(TAG, "%s.%s=%u", sec, nm, (unsigned)rd32be(v));
     else           ESP_LOGI(TAG, "%s.%s(len=%u)", sec, nm, (unsigned)l);
+}
+
+static bool parse_uuid128(const char* str, uint8_t out[16])
+{
+    // 36 karakteres, dash-es forma: 12345678-1234-5678-1234-1234567890AB
+    if (!str) return false;
+    size_t len = strlen(str);
+    if (len < 36) return false;
+
+    int idx = 0;
+    for (size_t i = 0; i < len && idx < 16; ) {
+        if (str[i] == '-') { i++; continue; }
+
+        if (!isxdigit((unsigned char)str[i]) ||
+            !isxdigit((unsigned char)str[i+1])) {
+            return false;
+        }
+        int hi = isdigit((unsigned char)str[i])   ? str[i]   - '0'
+                : 10 + (tolower((unsigned char)str[i])   - 'a');
+        int lo = isdigit((unsigned char)str[i+1]) ? str[i+1] - '0'
+                : 10 + (tolower((unsigned char)str[i+1]) - 'a');
+
+        out[idx++] = (uint8_t)((hi << 4) | lo);
+        i += 2;
+    }
+    return (idx == 16);
+}
+
+esp_err_t ble_set_uuids_from_strings(const char* svc, const char* data, const char* cfg)
+{
+    uint8_t tmp_svc[16], tmp_data[16], tmp_cfg[16];
+
+    if (!parse_uuid128(svc,  tmp_svc))  return ESP_ERR_INVALID_ARG;
+    if (!parse_uuid128(data, tmp_data)) return ESP_ERR_INVALID_ARG;
+    if (!parse_uuid128(cfg,  tmp_cfg))  return ESP_ERR_INVALID_ARG;
+
+    memcpy(s_svc_uuid_128,  tmp_svc,  16);
+    memcpy(s_data_uuid_128, tmp_data, 16);
+    memcpy(s_cfg_uuid_128,  tmp_cfg,  16);
+    s_uuid_overridden = true;
+    return ESP_OK;
 }
 
 static inline void rx_reset(void){
@@ -565,8 +612,9 @@ static void gattc_cb(esp_gattc_cb_event_t e, esp_gatt_if_t gattc_if, esp_ble_gat
     case ESP_GATTC_SEARCH_RES_EVT:
         if (p->search_res.srvc_id.uuid.len == ESP_UUID_LEN_128) {
             const uint8_t* u = p->search_res.srvc_id.uuid.uuid.uuid128;
-            if (memcmp(u, UWB_SVC_UUID_128, 16)==0 || memcmp(u, UWB_SVC_UUID_128_BE, 16)==0) {
-                g_start_handle = p->search_res.start_handle;
+            const uint8_t* expected = s_uuid_overridden ? s_svc_uuid_128 : UWB_SVC_UUID_128;
+
+            if (memcmp(u, expected, 16)==0 || memcmp(u, UWB_SVC_UUID_128_BE, 16)==0) {                g_start_handle = p->search_res.start_handle;
                 g_end_handle   = p->search_res.end_handle;
                 ESP_LOGI(TAG, "svc found: 0x%04X..0x%04X", g_start_handle, g_end_handle);
             }
@@ -585,7 +633,8 @@ static void gattc_cb(esp_gattc_cb_event_t e, esp_gatt_if_t gattc_if, esp_ble_gat
         /* UUID alapú keresés */
         {
             esp_gattc_char_elem_t chr[1]; uint16_t count=1;
-            esp_bt_uuid_t cu = uuid128(UWB_DATA_UUID_128);
+            const uint8_t* u = s_uuid_overridden ? s_data_uuid_128 : UWB_DATA_UUID_128;
+            esp_bt_uuid_t cu = uuid128(u);
             if (esp_ble_gattc_get_char_by_uuid(g_gattc_if, g_conn_id,
                     g_start_handle, g_end_handle, cu, chr, &count) == ESP_GATT_OK && count) {
                 g_data_h = chr[0].char_handle; have_data=true;
@@ -594,7 +643,8 @@ static void gattc_cb(esp_gattc_cb_event_t e, esp_gatt_if_t gattc_if, esp_ble_gat
         }
         {
             esp_gattc_char_elem_t chr[1]; uint16_t count=1;
-            esp_bt_uuid_t cu = uuid128(UWB_CFG_UUID_128);
+            const uint8_t* u = s_uuid_overridden ? s_cfg_uuid_128 : UWB_CFG_UUID_128;
+            esp_bt_uuid_t cu = uuid128(u);
             if (esp_ble_gattc_get_char_by_uuid(g_gattc_if, g_conn_id,
                     g_start_handle, g_end_handle, cu, chr, &count) == ESP_GATT_OK && count) {
                 g_cfg_h = chr[0].char_handle; have_cfg=true;

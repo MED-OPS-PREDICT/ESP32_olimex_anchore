@@ -25,3 +25,5 @@ void ble_register_notify_cb(ble_notify_cb_t cb);
 #define OP_ERR    0xE0
 
 #endif /* COMPONENTS_BLE_BLE_H */
+
+esp_err_t ble_set_uuids_from_strings(const char* svc, const char* data, const char* cfg);

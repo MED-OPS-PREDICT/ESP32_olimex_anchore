@@ -6,7 +6,11 @@
   <component name="ChangeListManager">
     <list default="true" id="d7727baf-cd08-430d-884d-b4e040b4a9ee" name="Changes" comment="a3">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/components/webserver/spiffs/diag.html" beforeDir="false" afterPath="$PROJECT_DIR$/components/webserver/spiffs/diag.html" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/ble/ble.c" beforeDir="false" afterPath="$PROJECT_DIR$/components/ble/ble.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/ble/ble.h" beforeDir="false" afterPath="$PROJECT_DIR$/components/ble/ble.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/webserver/webserver.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/components/webserver/webserver.cpp" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/webserver/webserver.hpp" beforeDir="false" afterPath="$PROJECT_DIR$/components/webserver/webserver.hpp" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/main/main.c" beforeDir="false" afterPath="$PROJECT_DIR$/main/main.c" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -100,6 +104,7 @@
       <workItem from="1764596425875" duration="22144000" />
       <workItem from="1764623048372" duration="12919000" />
       <workItem from="1764685999626" duration="16514000" />
+      <workItem from="1764956748604" duration="2548000" />
     </task>
     <task id="LOCAL-00046" summary="a">
       <option name="closed" value="true" />

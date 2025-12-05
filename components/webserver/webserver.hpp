@@ -16,6 +16,16 @@ typedef enum {
 esp_err_t webserver_start(void);
 esp_err_t webserver_stop(void);
 
+typedef struct {
+    char     name[32];
+    char     svc_uuid[40];
+    char     data_uuid[40];
+    char     cfg_uuid[40];
+    uint16_t req_id;
+} web_ble_cfg_t;
+
+const web_ble_cfg_t* web_ble_cfg_get(void);
+
 #ifdef __cplusplus
 }
 #endif

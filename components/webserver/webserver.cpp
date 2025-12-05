@@ -386,10 +386,19 @@ struct EspCfg {
 
 } g_cfg;
 
+static web_ble_cfg_t g_ble_cfg = {
+    "UWB_ANCHOR_01",                                      // name
+    "12345678-1234-5678-1234-1234567890AB",               // svc_uuid
+    "ABCDEF01-1234-5678-1234-1234567890AB",               // data_uuid
+    "ABCDEF02-1234-5678-1234-1234567890AB",               // cfg_uuid
+    1                                                     // req_id
+};
+
 /* ==== NVS kezelés az ESP confighoz (g_cfg) ==== */
 
-static const char* NVS_NS  = "cfg";
-static const char* NVS_KEY = "esp_cfg";
+static const char* NVS_NS       = "cfg";
+static const char* NVS_KEY      = "esp_cfg";
+static const char* NVS_KEY_BLE  = "ble_cfg";
 
 static bool s_nvs_inited = false;
 
@@ -471,6 +480,66 @@ static void esp_cfg_save_to_nvs(void)
     nvs_commit(h);
     nvs_close(h);
     ESP_LOGI(TAG, "EspCfg saved to NVS (size=%u)", (unsigned)sizeof(g_cfg));
+}
+
+// BLE config -> NVS
+static void ble_cfg_save_to_nvs(void)
+{
+    ensure_nvs_init();
+    if (!s_nvs_inited) return;
+
+    nvs_handle_t h;
+    esp_err_t err = nvs_open(NVS_NS, NVS_READWRITE, &h);
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "nvs_open write (BLE) err=0x%x", err);
+        return;
+    }
+
+    err = nvs_set_blob(h, NVS_KEY_BLE, &g_ble_cfg, sizeof(g_ble_cfg));
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "nvs_set_blob (BLE) err=0x%x", err);
+        nvs_close(h);
+        return;
+    }
+
+    nvs_commit(h);
+    nvs_close(h);
+    ESP_LOGI(TAG, "BleCfg saved to NVS (size=%u)", (unsigned)sizeof(g_ble_cfg));
+}
+
+// NVS -> BLE config
+static void ble_cfg_load_from_nvs(void)
+{
+    ensure_nvs_init();
+    if (!s_nvs_inited) return;
+
+    nvs_handle_t h;
+    esp_err_t err = nvs_open(NVS_NS, NVS_READONLY, &h);
+    if (err != ESP_OK) {
+        ESP_LOGI(TAG, "no BLE cfg in NVS (open err=0x%x), using defaults", err);
+        return;
+    }
+
+    size_t sz = 0;
+    err = nvs_get_blob(h, NVS_KEY_BLE, NULL, &sz);
+    if (err != ESP_OK || sz == 0 || sz > sizeof(web_ble_cfg_t)) {
+        ESP_LOGW(TAG, "no/invalid BLE blob (err=0x%x, sz=%u), using defaults",
+                 err, (unsigned)sz);
+        nvs_close(h);
+        return;
+    }
+
+    web_ble_cfg_t tmp = g_ble_cfg;
+    err = nvs_get_blob(h, NVS_KEY_BLE, &tmp, &sz);
+    nvs_close(h);
+
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "nvs_get_blob (BLE) err=0x%x, using defaults", err);
+        return;
+    }
+
+    g_ble_cfg = tmp;
+    ESP_LOGI(TAG, "BleCfg loaded from NVS (size=%u)", (unsigned)sz);
 }
 
 static bool find_key(const char* body, const char* key, const char** val_start){
@@ -556,6 +625,24 @@ static void json_cfg_print(char* buf, size_t sz, const EspCfg& c)
     );
 }
 
+static void json_ble_cfg_print(char* buf, size_t sz, const web_ble_cfg_t& c)
+{
+    snprintf(buf, sz,
+      "{"
+      "\"BLE_NAME\":\"%s\","
+      "\"BLE_SVC_UUID\":\"%s\","
+      "\"BLE_DATA_UUID\":\"%s\","
+      "\"BLE_CFG_UUID\":\"%s\","
+      "\"BLE_REQ_ID\":%u"
+      "}\n",
+      c.name,
+      c.svc_uuid,
+      c.data_uuid,
+      c.cfg_uuid,
+      (unsigned)c.req_id
+    );
+}
+
 // forward deklarációk
 static void gcfg_from_globals(void);
 static void globals_from_gcfg(void);
@@ -622,6 +709,59 @@ static bool parse_u16(const char* body, const char* key, uint16_t& out){ uint32_
 static bool parse_u8 (const char* body, const char* key, uint8_t&  out){ uint32_t t; if(!parse_u32(body,key,t)) return false; out=(uint8_t)t;  return true; }
 
 /* ================= /api/config ================= */
+
+static esp_err_t api_ble_cfg_get(httpd_req_t* req)
+{
+    if (!require_role(req, ROLE_ROOT)) return ESP_FAIL;  // csak superuser
+
+    add_cors(req);
+    add_no_cache(req);
+
+    // NVS-ből egyszer töltsd be induláskor: tedd be egy initbe, vagy itt hívhatod:
+    ble_cfg_load_from_nvs();
+
+    char buf[256];
+    json_ble_cfg_print(buf, sizeof(buf), g_ble_cfg);
+    httpd_resp_set_type(req, "application/json");
+    return httpd_resp_send(req, buf, strlen(buf));
+}
+
+static esp_err_t api_ble_cfg_post(httpd_req_t* req)
+{
+    if (!require_role(req, ROLE_ROOT)) return ESP_FAIL; // csak superuser
+
+    add_cors(req);
+    add_no_cache(req);
+
+    int len = req->content_len;
+    if (len <= 0) {
+        return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "empty");
+    }
+
+    std::vector<char> body(len + 1, 0);
+    int off = 0;
+    while (off < len) {
+        int r = httpd_req_recv(req, body.data() + off, len - off);
+        if (r <= 0) {
+            return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "recv");
+        }
+        off += r;
+    }
+
+    // JSON -> g_ble_cfg
+    parse_str(body.data(), "\"BLE_NAME\""     , g_ble_cfg.name,     sizeof(g_ble_cfg.name));
+    parse_str(body.data(), "\"BLE_SVC_UUID\"" , g_ble_cfg.svc_uuid, sizeof(g_ble_cfg.svc_uuid));
+    parse_str(body.data(), "\"BLE_DATA_UUID\"", g_ble_cfg.data_uuid,sizeof(g_ble_cfg.data_uuid));
+    parse_str(body.data(), "\"BLE_CFG_UUID\"" , g_ble_cfg.cfg_uuid, sizeof(g_ble_cfg.cfg_uuid));
+    parse_u16(body.data(), "\"BLE_REQ_ID\""   , g_ble_cfg.req_id);
+
+    // mentés NVS-be
+    ble_cfg_save_to_nvs();
+
+    httpd_resp_set_type(req, "application/json");
+    return httpd_resp_sendstr(req, "{\"ok\":true}\n");
+}
+
 static esp_err_t api_config_get(httpd_req_t* req){
     if(!require_role(req, ROLE_DIAG)) return ESP_FAIL;
     add_cors(req);
@@ -1011,6 +1151,7 @@ esp_err_t webserver_start() {
     } else {
         gcfg_from_globals();
     }
+    ble_cfg_load_from_nvs();
 
     aes_sender_init();
     if (g_cfg.aes_key_hex[0] != '\0') {
@@ -1062,6 +1203,15 @@ esp_err_t webserver_start() {
     };
     httpd_register_uri_handler(s_http, &get_cfg);
 
+    // ÚJ: BLE config GET
+    httpd_uri_t get_ble_cfg = {
+        .uri      = "/api/ble_cfg",
+        .method   = HTTP_GET,
+        .handler  = api_ble_cfg_get,
+        .user_ctx = nullptr
+    };
+    httpd_register_uri_handler(s_http, &get_ble_cfg);
+
     // ----- API POST-ok -----
     httpd_uri_t post_cfg = {
         .uri      = "/api/config",
@@ -1070,6 +1220,15 @@ esp_err_t webserver_start() {
         .user_ctx = nullptr
     };
     httpd_register_uri_handler(s_http, &post_cfg);
+
+    // ÚJ: BLE config POST
+    httpd_uri_t post_ble_cfg = {
+        .uri      = "/api/ble_cfg",
+        .method   = HTTP_POST,
+        .handler  = api_ble_cfg_post,
+        .user_ctx = nullptr
+    };
+    httpd_register_uri_handler(s_http, &post_ble_cfg);
 
     httpd_uri_t auth_post = {
         .uri      = "/auth/login",
@@ -1128,6 +1287,14 @@ esp_err_t webserver_start() {
     };
     httpd_register_uri_handler(s_http, &opt_change_pw);
 
+    httpd_uri_t opt_ble_cfg = {
+        .uri      = "/api/ble_cfg",
+        .method   = HTTP_OPTIONS,
+        .handler  = options_ok,
+        .user_ctx = nullptr
+    };
+    httpd_register_uri_handler(s_http, &opt_ble_cfg);
+
     // ----- Egyéb API-k -----
     httpd_uri_t uri_reboot = {
         .uri      = "/api/reboot",
@@ -1179,4 +1346,9 @@ esp_err_t webserver_start() {
 esp_err_t webserver_stop(){
     if(!s_http) return ESP_OK;
     httpd_stop(s_http); s_http=nullptr; return ESP_OK;
+}
+
+extern "C" const web_ble_cfg_t* web_ble_cfg_get(void)
+{
+    return &g_ble_cfg;
 }
