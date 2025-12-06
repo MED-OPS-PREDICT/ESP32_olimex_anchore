@@ -526,6 +526,41 @@ esp_err_t ble_start(const char* name_filter, ble_notify_cb_t cb)
     return ESP_OK;
 }
 
+esp_err_t ble_restart_with_filter(const char* name_filter)
+{
+    /* name filter frissítése */
+    if (name_filter) {
+        strncpy(g_name_filter, name_filter, sizeof(g_name_filter)-1);
+        g_name_filter[sizeof(g_name_filter)-1] = 0;
+    } else {
+        g_name_filter[0] = 0;
+    }
+
+    /* ha van aktív kapcsolat, zárjuk le */
+    if (g_connected && g_gattc_if != 0xFE && g_conn_id != 0xFFFF) {
+        ESP_LOGI(TAG, "ble_restart_with_filter: closing old conn_id=%u", g_conn_id);
+        esp_ble_gattc_close(g_gattc_if, g_conn_id);
+    }
+
+    g_connected  = false;
+    ble_up       = 0;
+    g_connecting = false;
+    reset_gatt_state();
+    rx_reset();
+
+    /* ha már van regisztrált GATTC IF, induljon újra a szkennelés */
+    if (g_gattc_if != 0xFE) {
+        esp_err_t er = start_scan_safe(0);
+        if (er != ESP_OK) {
+            ESP_LOGW(TAG, "ble_restart_with_filter: start_scan_safe err=0x%x", er);
+        }
+        return er;
+    }
+
+    /* ha még túl korán hívtuk (nincs GATTC IF), ne csináljon semmi rosszat */
+    return ESP_OK;
+}
+
 /* ====== GAP CB ====== */
 static void gap_cb(esp_gap_ble_cb_event_t e, esp_ble_gap_cb_param_t* p)
 {

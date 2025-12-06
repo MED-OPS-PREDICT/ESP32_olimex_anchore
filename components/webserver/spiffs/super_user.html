@@ -1170,6 +1170,7 @@ applyFixedTooltips();   // <<< ÚJ – a fix inputok title-jei
 //  - DWM RAM-cache lekérdezés (/api/dwm_last) – gyors
 doEspGet();
 doDwmGetCached();
+loadBleCfgFromEsp();
 
 $('btnLogout').addEventListener('click', () => {
   // Session cookie érvénytelenítése
@@ -1236,7 +1237,7 @@ async function saveBleCfgToEsp() {
       : 'UWB_ANCHOR_01';
 
     const body = {
-      BLE_NAME:      bleName,
+      BLE_NAME:      $('bleName').value.trim(),
       BLE_SVC_UUID:  $('svcUuid').value.trim(),
       BLE_DATA_UUID: $('dataUuid').value.trim(),
       BLE_CFG_UUID:  $('cfgUuid').value.trim(),
@@ -1253,20 +1254,19 @@ async function saveBleCfgToEsp() {
     const resp = await r.json();
 
     if (resp.ok) {
-      logln('[BLE] Konfig elmentve NVS-be (ESP). Újraindítás...');
+      logln('[BLE] Konfig elmentve NVS-be. BLE kliens újraindítás...');
 
       try {
-        await fetch('/api/reboot', {
-          method: 'POST',
-          headers: { 'Authorization': 'Basic ' + btoa('admin:admin') }
+        await fetch('/api/reboot_ble', {
+          method: 'POST'
         });
-        logln('[ESP] újraindítás kérve (BLE mentés után).');
+        logln('[BLE] kliens újraindítva (új név / UUID-ek aktiválva).');
       } catch (e2) {
-        logln('[ESP] reboot hiba: ' + e2.message);
+        logln('[BLE] restart hiba: ' + e2.message);
       }
 
+      // ha akarsz reloadot, maradhat:
       setTimeout(() => { location.reload(); }, 1500);
-
     } else {
       logln('[BLE] Mentés válasz: ' + JSON.stringify(resp));
     }

@@ -30,8 +30,13 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
+extern "C" {
+#include "ble.h"
+}
+
 extern "C" void ble_http_bridge_init(void);
 extern "C" void http_register_routes(httpd_handle_t h);
+extern "C" esp_err_t ble_restart_with_filter(const char* name_filter);
 
 extern "C" void ethernet_reapply_ip_from_net(void);
 
@@ -149,6 +154,22 @@ static esp_err_t options_ok(httpd_req_t* req){
     add_cors(req);
     httpd_resp_set_status(req, "204 No Content");
     return httpd_resp_sendstr(req, "");
+}
+static esp_err_t api_reboot_post(httpd_req_t *req)
+{
+    if (!require_role(req, ROLE_ROOT)) {   // csak root user
+        return ESP_FAIL;
+    }
+
+    add_cors(req);
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_sendstr(req, "{\"ok\":true}\n");
+
+    // kis késleltetés, hogy a válasz kiérjen
+    vTaskDelay(pdMS_TO_TICKS(50));
+
+    esp_restart();   // teljes ESP újraindítás
+    return ESP_OK;   // ide már úgysem jutunk vissza
 }
 
 static esp_err_t send_file(httpd_req_t* req, const char* path, const char* ctype);
@@ -762,6 +783,40 @@ static esp_err_t api_ble_cfg_post(httpd_req_t* req)
     return httpd_resp_sendstr(req, "{\"ok\":true}\n");
 }
 
+/* ===== /api/reboot_ble – csak a BLE kliens újraindítása ===== */
+static esp_err_t api_reboot_ble(httpd_req_t* req)
+{
+    if (!require_role(req, ROLE_BLE)) {  // admin + root
+        return ESP_FAIL;
+    }
+
+    add_cors(req);
+    add_no_cache(req);
+
+    /* UUID-ek frissítése, ha mindhárom mező ki van töltve */
+    if (g_ble_cfg.svc_uuid[0] &&
+        g_ble_cfg.data_uuid[0] &&
+        g_ble_cfg.cfg_uuid[0]) {
+        (void)ble_set_uuids_from_strings(g_ble_cfg.svc_uuid,
+                                         g_ble_cfg.data_uuid,
+                                         g_ble_cfg.cfg_uuid);
+    }
+
+    /* név filter a jelenlegi BLE_NAME mezőből (üres string = bármi jó) */
+    const char* filter = g_ble_cfg.name[0] ? g_ble_cfg.name : "";
+
+    esp_err_t er = ble_restart_with_filter(filter);
+
+    char buf[64];
+    int n = snprintf(buf, sizeof(buf),
+                     "{\"ok\":%s,\"err\":%d}\n",
+                     (er == ESP_OK) ? "true" : (er == ESP_ERR_INVALID_STATE ? "false" : "false"),
+                     (int)er);
+
+    httpd_resp_set_type(req, "application/json");
+    return httpd_resp_send(req, buf, n);
+}
+
 static esp_err_t api_config_get(httpd_req_t* req){
     if(!require_role(req, ROLE_DIAG)) return ESP_FAIL;
     add_cors(req);
@@ -1160,7 +1215,7 @@ esp_err_t webserver_start() {
 
     httpd_config_t cfg = HTTPD_DEFAULT_CONFIG();
     cfg.uri_match_fn    = httpd_uri_match_wildcard;
-    cfg.max_uri_handlers= 24;
+    cfg.max_uri_handlers= 40;
     cfg.stack_size      = 8192;
     ESP_ERROR_CHECK(httpd_start(&s_http, &cfg));
 
@@ -1296,6 +1351,14 @@ esp_err_t webserver_start() {
     httpd_register_uri_handler(s_http, &opt_ble_cfg);
 
     // ----- Egyéb API-k -----
+    httpd_uri_t uri_reboot_ble = {
+        .uri      = "/api/reboot_ble",
+        .method   = HTTP_POST,
+        .handler  = api_reboot_ble,
+        .user_ctx = nullptr
+    };
+    httpd_register_uri_handler(s_http, &uri_reboot_ble);
+
     httpd_uri_t uri_reboot = {
         .uri      = "/api/reboot",
         .method   = HTTP_POST,

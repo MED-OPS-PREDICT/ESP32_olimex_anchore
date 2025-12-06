@@ -12,6 +12,9 @@ typedef void (*ble_notify_cb_t)(const uint8_t* data, uint16_t len, bool from_cfg
 esp_err_t ble_cfg_write_raw(const uint8_t *data, uint16_t len);
 
 esp_err_t ble_start(const char* name_filter, ble_notify_cb_t cb);
+/* ÚJ: csak a BLE kliens kapcsolat + szkennelés újraindítása */
+esp_err_t ble_restart_with_filter(const char* name_filter);
+
 esp_err_t ble_send_get(uint16_t req_id);
 esp_err_t ble_send_set(uint16_t req_id, const uint8_t* tlv, uint16_t len);
 void ble_register_notify_cb(ble_notify_cb_t cb);
