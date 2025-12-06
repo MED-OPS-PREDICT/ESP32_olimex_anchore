@@ -872,7 +872,7 @@ function updateLastTables(stat){
     const t       = fmtTime(r.ts_ms ?? r.ts ?? 0); // ha ts ms-ben van
     const tagId   = (r.tag    !== undefined) ? r.tag    : '–';
     const anchor  = (r.anchor !== undefined) ? r.anchor : '–';
-    const sync    = (r.sync_ms !== undefined) ? (r.sync_ms + ' ms') : '–';
+    const sync    = (r.sync !== undefined) ? (r.sync + ' ms') : '–';
     const seq     = (r.seq    !== undefined) ? r.seq    : '–';
     const batt    = (r.batt   !== undefined) ? (r.batt + ' %') : '–';
     const uwbTs   = (r.uwb_ts !== undefined) ? r.uwb_ts : '–';
