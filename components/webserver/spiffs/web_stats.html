@@ -480,6 +480,12 @@
 <script>
 const $ = id => document.getElementById(id);
 
+function fmtHex32(v){
+  const n = Number(v);
+  if (!Number.isFinite(n)) return '–';
+  return '0x' + n.toString(16).padStart(8, '0').toUpperCase();
+}
+
 // ===== pill style helper =====
 function setPill(el, level, text){
   if(!el) return;
@@ -871,7 +877,7 @@ function updateLastTables(stat){
   const makeRowTag = r => {
     const t       = fmtTime(r.ts_ms ?? r.ts ?? 0); // ha ts ms-ben van
     const tagId   = (r.tag    !== undefined) ? r.tag    : '–';
-    const anchor  = (r.anchor !== undefined) ? r.anchor : '–';
+    const anchor  = (r.anchor !== undefined) ? fmtHex32(r.anchor) : '–';
     const sync    = (r.sync !== undefined) ? (r.sync + ' ms') : '–';
     const seq     = (r.seq    !== undefined) ? r.seq    : '–';
     const batt    = (r.batt   !== undefined) ? (r.batt + ' %') : '–';
