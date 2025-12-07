@@ -13,6 +13,7 @@
 #include "error_code_decoding.h"
 #include "web_stats.h"
 #include "esp_timer.h"
+#include "webserver.hpp"
 
 static const char *TAG_UWB = "UWB_DATA";
 
@@ -152,16 +153,18 @@ void uwb_notify_cb(const uint8_t *data, uint16_t len, bool from_cfg)
                      (uint32_t)uptime,
                      (uint32_t)sync_ms);
 
+            /* --- Zóna azonosító beolvasása (ESP config / NVS) --- */
+            uint16_t zone_id = esp_cfg_get_zone_id();
+
             char line[128];
             snprintf(line, sizeof(line),
-                     "HB: HB status=%" PRIu8 " uptime=%" PRIu32 " ms sync_ms=%" PRIu32,
+                     "HB: HB status=%" PRIu8 " uptime=%" PRIu32 " ms sync_ms=%" PRIu32 " zone_id=0x%04X",
                      (uint8_t)status,
                      (uint32_t)uptime,
-                     (uint32_t)sync_ms);
-            aes_sender_send_line(line);
+                     (uint32_t)sync_ms,
+                     (unsigned)zone_id);
 
-            web_stats_log_hb(status, uptime, sync_ms);
-
+aes_sender_send_line(line);
             return;
         }
         return;
@@ -192,14 +195,17 @@ void uwb_notify_cb(const uint8_t *data, uint16_t len, bool from_cfg)
                  pkt.anchor_id, pkt.tag_id,
                  (uint64_t)pkt.timestamp);
 
+        uint16_t zone_id = esp_cfg_get_zone_id();
+
         char line[200];
         snprintf(line, sizeof(line),
                  "UWB: ver=%u sync=%u tag_seq=%u batt=%u%% anchor=0x%08" PRIX32
-                 " tag=0x%08" PRIX32 " ts=%" PRIu64,
+                 " tag=0x%08" PRIX32 " ts=%" PRIu64 " zone_id=0x%04X",
                  pkt.version, pkt.sync_seq, pkt.tag_seq,
                  pkt.batt_pct,
                  pkt.anchor_id, pkt.tag_id,
-                 (uint64_t)pkt.timestamp);
+                 (uint64_t)pkt.timestamp,
+                 (unsigned)zone_id);
         aes_sender_send_line(line);
         return;
     }

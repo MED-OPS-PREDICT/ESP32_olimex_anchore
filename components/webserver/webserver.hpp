@@ -1,4 +1,5 @@
 #pragma once
+#include <stdint.h>
 #include "esp_err.h"
 
 /* A header-t C és C++ alatt is elérhetővé tesszük */
@@ -25,6 +26,7 @@ typedef struct {
 } web_ble_cfg_t;
 
 const web_ble_cfg_t* web_ble_cfg_get(void);
+uint16_t esp_cfg_get_zone_id(void);
 
 #ifdef __cplusplus
 }

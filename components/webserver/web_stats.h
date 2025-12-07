@@ -14,7 +14,6 @@ void web_stats_ble_tx(bool ok);
 void web_stats_eth_rx(bool ok);
 void web_stats_eth_tx(bool ok);
 
-// components/webserver/web_stats.h
 void web_stats_log_tag(
     uint32_t anchor_id,
     uint32_t tag_id,

@@ -563,6 +563,12 @@ static void ble_cfg_load_from_nvs(void)
     ESP_LOGI(TAG, "BleCfg loaded from NVS (size=%u)", (unsigned)sz);
 }
 
+extern "C" uint16_t esp_cfg_get_zone_id(void)
+{
+    // NVS-ből betöltött (vagy default) g_cfg.ZONE_ID-t adja vissza
+    return g_cfg.ZONE_ID;
+}
+
 static bool find_key(const char* body, const char* key, const char** val_start){
     const char* p=strstr(body,key); if(!p) return false;
     p=strchr(p,':'); if(!p) return false; p++;
