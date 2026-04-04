@@ -16,8 +16,8 @@
 #define WIFI_CFG_KEY "sta_cfg"
 
 static wifi_manager_config_t s_cfg = {
-    .enabled = 0,
-    .dhcp = 1,
+    .enabled = 1,
+    .dhcp = 0,
     .ssid = "Hullam_144",
     .password = "Khjhjj11",
     .ip = "192.168.1.194",
@@ -140,7 +140,24 @@ static void on_wifi_got_ip(void *arg, esp_event_base_t base, int32_t id, void *d
         esp_netif_set_default_netif(s_netif);
     }
 
-    ESP_LOGI(TAG, "Wi-Fi IP: %s", s_ip_str);
+    ESP_LOGI(TAG, "Wi-Fi kapcsolat sikeres");
+    ESP_LOGI(TAG, "SSID: %s", s_cfg.ssid);
+    ESP_LOGI(TAG, "DHCP: %s", s_cfg.dhcp ? "igen" : "nem");
+    ESP_LOGI(TAG, "IP: " IPSTR, IP2STR(&e->ip_info.ip));
+    ESP_LOGI(TAG, "MASK: " IPSTR, IP2STR(&e->ip_info.netmask));
+    ESP_LOGI(TAG, "GW: " IPSTR, IP2STR(&e->ip_info.gw));
+
+    esp_netif_dns_info_t dmain = {0};
+    esp_netif_dns_info_t dbackup = {0};
+
+    if (s_netif) {
+        if (esp_netif_get_dns_info(s_netif, ESP_NETIF_DNS_MAIN, &dmain) == ESP_OK) {
+            ESP_LOGI(TAG, "DNS1: " IPSTR, IP2STR(&dmain.ip.u_addr.ip4));
+        }
+        if (esp_netif_get_dns_info(s_netif, ESP_NETIF_DNS_BACKUP, &dbackup) == ESP_OK) {
+            ESP_LOGI(TAG, "DNS2: " IPSTR, IP2STR(&dbackup.ip.u_addr.ip4));
+        }
+    }
 }
 
 static esp_err_t ensure_wifi_stack(void)

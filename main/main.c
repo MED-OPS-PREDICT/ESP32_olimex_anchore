@@ -153,6 +153,9 @@ void app_main(void)
     web_stats_init();
     webserver_start();
 
+
+
+
     if (!ethernet_is_link_up() && wifi_manager_should_run()) {
         wifi_manager_start();
     }
