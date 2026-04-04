@@ -17,7 +17,6 @@
     --err:#ff5d5d;
   }
   *{box-sizing:border-box;}
-
   body{
     margin:0;
     min-height:100vh;
@@ -25,7 +24,6 @@
     color:var(--txt);
     font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,Ubuntu,sans-serif;
   }
-
   header{
     padding:14px 18px;
     border-bottom:1px solid rgba(255,255,255,.06);
@@ -35,42 +33,31 @@
     justify-content:space-between;
   }
   h1{margin:0;font-size:16px;}
-
-    .wrap{
-      padding:16px;
-      display:grid;
-      gap:14px;
-      max-width:1840px;
-      margin:0 auto;
-    }
-
-    /* maga a kártya: azonos magasság, a tartalom kitölti */
-    .cfg-card{
-      display:flex;
-      flex-direction:column;
-      /*min-height:520px; */                        /* kártya “pontos” magassága */
-    }
-
-    .cfg-card .bd{
-      flex:1 1 auto;
-      overflow:hidden;
-    }
-
-    /* ha azt szeretnéd, hogy a táblák belül görgősek lehessenek: */
-    .cfg-card .table-wrap{
-      /*max-height:380px; */                        /* ízlés szerint állítható */
-      overflow-y:auto;
-    }
-
+  .wrap{
+    padding:16px;
+    display:grid;
+    gap:14px;
+    max-width:1840px;
+    margin:0 auto;
+  }
+  .cfg-card{
+    display:flex;
+    flex-direction:column;
+  }
+  .cfg-card .bd{
+    flex:1 1 auto;
+    overflow:hidden;
+  }
+  .cfg-card .table-wrap{
+    overflow-y:auto;
+  }
   .card{
     background:color-mix(in srgb,var(--panel) 92%,#000 8%);
     border:1px solid rgba(255,255,255,.08);
     border-radius:16px;
     box-shadow:0 10px 34px rgba(0,0,0,.35);
   }
-  .card.full{
-    grid-column:1 / -1;
-  }
+  .card.full{ grid-column:1 / -1; }
   .card .hd{
     display:flex;
     align-items:center;
@@ -88,7 +75,7 @@
     font-size:11px;
     color:var(--muted);
   }
-  .card .bd{padding:12px 14px 14px;}
+  .card .bd{ padding:12px 14px 14px; }
 
   .cfg-grid{
     display:grid;
@@ -96,63 +83,51 @@
     grid-template-columns:repeat(auto-fit,minmax(380px,1fr));
   }
 
+  .anchor-status{
+    margin-top:6px;
+    font-size:13px;
+    color:var(--muted);
+  }
+  .anchor-status.ok   { color:var(--ok); }
+  .anchor-status.warn { color:var(--warn); }
+  .anchor-status.err  { color:var(--err); }
 
-    .anchor-status{
-      margin-top:6px;
-      font-size:13px;
-      color:var(--muted);
-    }
-    .anchor-status.ok   { color:var(--ok); }
-    .anchor-status.warn { color:var(--warn); }
-    .anchor-status.err  { color:var(--err); }
+  .status-wrap{
+    display:flex;
+    flex-direction:column;
+    align-items:flex-end;
+    gap:4px;
+    min-width:360px;
+  }
+  .status-pills{
+    display:flex;
+    flex-wrap:wrap;
+    gap:6px;
+    justify-content:flex-end;
+  }
+  .anchor-status{
+    display:inline-flex;
+    align-items:center;
+    padding:2px 10px;
+    border-radius:999px;
+    font-size:11px;
+    background:rgba(255,255,255,.03);
+    color:var(--muted);
+    white-space:nowrap;
+  }
+  .anchor-status.ok{
+    background:rgba(25,195,125,.18);
+    color:#9ce7c9;
+  }
+  .anchor-status.warn{
+    background:rgba(255,176,32,.18);
+    color:#ffd79b;
+  }
+  .anchor-status.err{
+    background:rgba(255,93,93,.18);
+    color:#ffc3c3;
+  }
 
-    /* ===== Kapcsolati állapot sor ===== */
-    .status-wrap{
-      display:flex;
-      flex-direction:column;
-      align-items:flex-end;
-      gap:4px;
-      min-width:360px;              /* hogy ne törjön szét túl hamar */
-    }
-    .status-pills{
-      display:flex;
-      flex-wrap:wrap;
-      gap:6px;
-      justify-content:flex-end;
-    }
-    /* Anchor állapot – „pill” kinézetben */
-    .anchor-status{
-      display:inline-flex;
-      align-items:center;
-      padding:2px 10px;
-      border-radius:999px;
-      font-size:11px;
-      background:rgba(255,255,255,.03);
-      color:var(--muted);
-      white-space:nowrap;
-    }
-    .anchor-status.ok{
-      background:rgba(25,195,125,.18);
-      color:#9ce7c9;
-    }
-    .anchor-status.warn{
-      background:rgba(255,176,32,.18);
-      color:#ffd79b;
-    }
-    .anchor-status.err{
-      background:rgba(255,93,93,.18);
-      color:#ffc3c3;
-    }
-
-    @media (max-width: 900px){
-      .status-wrap{
-        align-items:flex-start;
-        min-width:0;
-      }
-      .status-pills{
-        justify-content:flex-start;
-      }
-    }
   .btn{
     appearance:none;
     border:0;
@@ -184,6 +159,15 @@
     display:grid;
     grid-template-columns:160px minmax(0,1fr);
     gap:6px 10px;
+  }
+
+  .wifi-grid{
+    display:grid;
+    grid-template-columns:160px minmax(0,1fr);
+    gap:8px 10px;
+  }
+  .wifi-grid .full-span{
+    grid-column:1 / -1;
   }
 
   .pill{
@@ -242,32 +226,28 @@
     font-weight:600;
   }
 
-    /* alapértelmezett arányok – ha máshol is használsz cfg-table-t */
-    .cfg-table col.col-key  { width:45%; }
-    .cfg-table col.col-esp  { width:15%; }
-    .cfg-table col.col-dwm  { width:15%; }
-    .cfg-table col.col-new  { width:25%; }
+  .cfg-table col.col-key  { width:45%; }
+  .cfg-table col.col-esp  { width:15%; }
+  .cfg-table col.col-dwm  { width:15%; }
+  .cfg-table col.col-new  { width:25%; }
 
-    /* 1. kártya: közös (ESP + DWM) – itt legyen széles a kulcs, két vékony érték, közepes új érték */
-    #tblBase col.col-key  { width:28%; }
-    #tblBase col.col-esp  { width:15%; }
-    #tblBase col.col-dwm  { width:15%; }
-    #tblBase col.col-new  { width:32%; }
+  #tblBase col.col-key  { width:28%; }
+  #tblBase col.col-esp  { width:15%; }
+  #tblBase col.col-dwm  { width:15%; }
+  #tblBase col.col-new  { width:32%; }
 
-    /* 2. kártya: ESP konfiguráció – Kulcs nagy, ESP közepes, Új érték nagyobb */
-    #tblIps  col.col-key  { width:40%; }
-    #tblIps  col.col-esp  { width:25%; }
-    #tblIps  col.col-new  { width:35%; }
+  #tblIps  col.col-key  { width:40%; }
+  #tblIps  col.col-esp  { width:25%; }
+  #tblIps  col.col-new  { width:35%; }
 
-    /* 3. kártya: DWM konfiguráció – Kulcs közepes, DWM közepes, Új érték nagyobb */
-    #tblSync col.col-key,
-    #tblPhy  col.col-key  { width:40%; }
+  #tblSync col.col-key,
+  #tblPhy  col.col-key  { width:40%; }
 
-    #tblSync col.col-dwm,
-    #tblPhy  col.col-dwm  { width:20%; }
+  #tblSync col.col-dwm,
+  #tblPhy  col.col-dwm  { width:20%; }
 
-    #tblSync col.col-new,
-    #tblPhy  col.col-new  { width:40%; }
+  #tblSync col.col-new,
+  #tblPhy  col.col-new  { width:40%; }
 
   #tblIps td.mono{
     white-space: normal;
@@ -277,25 +257,44 @@
   #log{
     white-space: pre-wrap;
     word-break: break-all;
-    height: 220px;
-    max-height: 220px;
-    overflow: auto;
+    height:220px;
+    max-height:220px;
+    overflow:auto;
   }
 
-    #warn {
-      display: none !important;
-      margin: 0 !important;
-      padding: 0 !important;
-      border: 0 !important;
-      height: 0 !important;
-      background: transparent !important;
-    }
+  .switch-line{
+    display:flex;
+    align-items:center;
+    gap:10px;
+  }
+
+  .wifi-note{
+    grid-column:1 / -1;
+    color:var(--muted);
+    font-size:12px;
+  }
+
+  .wifi-live{
+    grid-column:1 / -1;
+    padding:8px 10px;
+    border:1px solid rgba(255,255,255,.08);
+    border-radius:10px;
+    background:rgba(255,255,255,.02);
+    color:var(--muted);
+  }
 
   @media (max-width: 900px){
+    .status-wrap{
+      align-items:flex-start;
+      min-width:0;
+    }
+    .status-pills{
+      justify-content:flex-start;
+    }
     .wrap{padding:10px;}
     header{flex-direction:column;align-items:flex-start;gap:6px;}
     .form-grid{grid-template-columns:120px minmax(0,1fr);}
-    .cfg-table col.col-key{width:170px;}
+    .wifi-grid{grid-template-columns:120px minmax(0,1fr);}
   }
 </style>
 </head>
@@ -307,28 +306,29 @@
 </header>
 
 <div class="wrap">
-    <!-- DWM kapcsolat kártya – teljes szélesség -->
-    <section class="card full">
-      <div class="hd">
-        <div class="hd-title">
-          <span>Kapcsolati állapot</span>
-          <small>BLE + IP célok elérhetősége</small>
-        </div>
+  <section class="card full">
+    <div class="hd">
+      <div class="hd-title">
+        <span>Kapcsolati állapot</span>
+        <small>BLE + IP célok elérhetősége</small>
+      </div>
 
-        <div class="status-wrap">
-          <div class="status-pills">
-            <span id="pillBle"  class="pill warn">BLE: ismeretlen</span>
-            <span id="pillEth"  class="pill warn">ETH: ismeretlen</span>
-            <span id="pillZone" class="pill warn">Zóna vezérlő: ismeretlen</span>
-            <span id="pillMain" class="pill warn">Fő szerver: ismeretlen</span>
-            <span id="pillServ" class="pill warn">Service: ismeretlen</span>
-          </div>
-          <div id="anchorStatus" class="anchor-status warn">
-            Anchor állapot: ismeretlen
-          </div>
+      <div class="status-wrap">
+        <div class="status-pills">
+          <span id="pillBle"  class="pill warn">BLE: ismeretlen</span>
+          <span id="pillEth"  class="pill warn">ETH: ismeretlen</span>
+          <span id="pillWifi" class="pill warn">WIFI: ismeretlen</span>
+          <span id="pillZone" class="pill warn">Zóna vezérlő: ismeretlen</span>
+          <span id="pillMain" class="pill warn">Fő szerver: ismeretlen</span>
+          <span id="pillServ" class="pill warn">Service: ismeretlen</span>
+        </div>
+        <div id="anchorStatus" class="anchor-status warn">
+          Anchor állapot: ismeretlen
         </div>
       </div>
-      <div class="bd">
+    </div>
+
+    <div class="bd">
       <div class="form-grid">
         <label>Szolgáltatás UUID</label>
         <input class="inp" id="svcUuid" value="12345678-1234-5678-1234-1234567890ab">
@@ -347,28 +347,21 @@
 
         <div></div>
         <div class="toolbar">
-            <button class="btn ghost" id="btnBleLoad">BLE betöltés</button>
-            <button class="btn"       id="btnBleSave">BLE mentés</button>
-
-            <button class="btn ghost" id="btnToStats">Statisztika</button>
-
-            <!-- Új gomb jelszóváltoztatáshoz -->
-            <button class="btn ghost" id="btnPasswd">Jelszavak</button>
-            <button class="btn ghost" id="btnRebootEsp">Újraindítás</button>
+          <button class="btn ghost" id="btnBleLoad">BLE betöltés</button>
+          <button class="btn"       id="btnBleSave">BLE mentés</button>
+          <button class="btn ghost" id="btnToStats">Statisztika</button>
+          <button class="btn ghost" id="btnPasswd">Jelszavak</button>
+          <button class="btn ghost" id="btnRebootEsp">Újraindítás</button>
         </div>
-
       </div>
     </div>
   </section>
 
-  <!-- Konfigurációs kártyák rácsban -->
   <div class="cfg-grid">
-
-    <!-- Közös (ESP + DWM) -->
     <section class="card cfg-card">
       <div class="hd">
         <div class="hd-title">
-          <span>Közös konfiguráció </span>
+          <span>Közös konfiguráció</span>
           <small>(ESP + DWM)</small>
         </div>
         <div class="toolbar">
@@ -395,7 +388,6 @@
       </div>
     </section>
 
-    <!-- ESP-only -->
     <section class="card cfg-card">
       <div class="hd">
         <div class="hd-title">
@@ -424,7 +416,63 @@
       </div>
     </section>
 
-    <!-- DWM-only -->
+    <section class="card cfg-card">
+      <div class="hd">
+        <div class="hd-title">
+          <span>Wi‑Fi konfiguráció</span>
+          <small>Fallback uplink, statikus vagy DHCP mód</small>
+        </div>
+        <div class="toolbar">
+          <button class="btn ghost" id="btnWifiLoad">Wi‑Fi betöltés</button>
+          <button class="btn" id="btnWifiSave">Wi‑Fi mentés</button>
+        </div>
+      </div>
+      <div class="bd">
+        <div class="wifi-grid">
+          <div class="wifi-live" id="wifiLive">
+            Aktív uplink: ismeretlen
+          </div>
+
+          <label>Wi‑Fi engedélyezve</label>
+          <div class="switch-line">
+            <input type="checkbox" id="wifiEnabled">
+            <span class="muted">Ethernet hiányában fallbackként indul</span>
+          </div>
+
+          <label>DHCP</label>
+          <div class="switch-line">
+            <input type="checkbox" id="wifiDhcp">
+            <span class="muted">Bekapcsolva a statikus mezők nem aktívak</span>
+          </div>
+
+          <label>SSID</label>
+          <input class="inp" id="wifiSsid" placeholder="Wi‑Fi hálózat neve">
+
+          <label>Jelszó</label>
+          <input class="inp" id="wifiPass" type="password" placeholder="Üresen hagyva marad a mentett">
+
+          <label>IP</label>
+          <input class="inp mono wifi-static" id="wifiIp" placeholder="192.168.1.194">
+
+          <label>Maszk</label>
+          <input class="inp mono wifi-static" id="wifiMask" placeholder="255.255.255.0">
+
+          <label>Gateway</label>
+          <input class="inp mono wifi-static" id="wifiGw" placeholder="192.168.1.1">
+
+          <label>DNS1</label>
+          <input class="inp mono wifi-static" id="wifiDns1" placeholder="1.1.1.1">
+
+          <label>DNS2</label>
+          <input class="inp mono wifi-static" id="wifiDns2" placeholder="8.8.8.8">
+
+          <div class="wifi-note">
+            A jelszó biztonsági okból nem töltődik vissza plain textben. Üresen hagyva a mentett jelszó marad meg.
+          </div>
+        </div>
+      </div>
+    </section>
+
     <section class="card cfg-card">
       <div class="hd">
         <div class="hd-title">
@@ -467,10 +515,8 @@
         </div>
       </div>
     </section>
-
   </div>
 
-  <!-- Log – teljes szélesség -->
   <section class="card full">
     <div class="hd">
       <div>Log</div>
@@ -480,11 +526,7 @@
   </section>
 </div>
 
-<!-- ÚJ: tooltipek beágyazva (nem külön fájl) -->
 <script>
-// Tooltip definíciók. A korábbi super_tooltips.js tartalma közvetlenül beágyazva,
-// így nincs szükség külön HTTP kérésre, és a tooltipek akkor is elérhetők,
-// ha a SPIFFS-ben hiányozna a JS állomány.
 window.SUPER_TOOLTIPS = {
   keys: {
     NETWORK_ID: "UWB hálózati azonosító. Minden anchoron azonos legyen.",
@@ -497,34 +539,24 @@ window.SUPER_TOOLTIPS = {
     BIAS_TICKS: "Mérési bias kompenzáció (tick).",
     PHY_CH:     "UWB csatorna (pl. 5, 9).",
     PHY_SFDTO:  "SFD timeout (sym).",
-
-    // IPS csoport
     ZONE_NAME:   "Zóna megnevezése (UI-ban jelenik meg).",
     DEVICE_NAME: "Eszköz neve (pl. ANCHOR_01).",
     DEVICE_DESC: "Rövid leírás, helyszín, megjegyzés.",
-
     ETH_MODE: "0 = DHCP, 1 = statikus IP.",
     ETH_IP:   "Saját IP cím.",
     ETH_MASK: "Hálózati maszk.",
     ETH_GW:   "Alapértelmezett gateway.",
-
     GW_ID: "Gateway ID, IPS konfigurációból.",
-
     AES_KEY: "AES titkosító kulcs hex formában (32 byte = 64 hex karakter).",
-
     ZONE_CTRL_IP:   "Zóna vezérlő IP címe.",
     ZONE_CTRL_PORT: "Zóna vezérlő UDP/TCP port.",
     ZONE_CTRL_EN:   "Zóna vezérlő engedélyezése (0/1).",
-
     MAIN_IP:   "Fő szerver IP címe.",
     MAIN_PORT: "Fő szerver port.",
     MAIN_EN:   "Fő szerver engedélyezése (0/1).",
-
     SERVICE_IP:   "Service / menedzsment szerver IP.",
     SERVICE_PORT: "Service szerver port.",
     SERVICE_EN:   "Service szerver engedélyezése (0/1).",
-
-    // sync
     PPM_MAX:     "Maximális frekvenciaeltérés ppm-ben.",
     JUMP_PPM:    "Ugrásérzékelés küszöb ppm-ben.",
     AB_GAP_MS:   "A-B szinkron ablak ms-ben.",
@@ -535,8 +567,6 @@ window.SUPER_TOOLTIPS = {
     DTTX_MIN_MS: "TX időköz minimum (ms).",
     DTTX_MAX_MS: "TX időköz maximum (ms).",
     LOCK_NEED:   "Lockhoz szükséges csomagszám / feltétel.",
-
-    // PHY
     PHY_PLEN:     "Preamble hossz.",
     PHY_PAC:      "PAC érték.",
     PHY_TX_CODE:  "TX kód index.",
@@ -549,8 +579,6 @@ window.SUPER_TOOLTIPS = {
     PHY_STS_LEN:  "STS hossz.",
     PHY_PDOA:     "PDOA mód."
   },
-
-  // fix input mezők ID alapján
   inputs: {
     svcUuid:   "BLE szolgáltatás UUID (GATT service).",
     cfgUuid:   "Konfigurációs karakterisztika UUID.",
@@ -561,40 +589,32 @@ window.SUPER_TOOLTIPS = {
 </script>
 
 <script>
-
 const $  = id => document.getElementById(id);
 const qs = s  => document.querySelector(s);
 let serialWriter = null;
+let serialReader = null;
 
-/* ===== globális hibanapló ===== */
-window.addEventListener('error', e => { logln('[JS-ERROR] '+(e.message||e)); });
-window.addEventListener('unhandledrejection', e => { logln('[JS-PROMISE] '+(e.reason||e)); });
-$('btnBleLoad').addEventListener('click', loadBleCfgFromEsp);
-$('btnBleSave').addEventListener('click', saveBleCfgToEsp);
+window.addEventListener('error', e => { logln('[JS-ERROR] ' + (e.message || e)); });
+window.addEventListener('unhandledrejection', e => { logln('[JS-PROMISE] ' + (e.reason || e)); });
 
-/* ===== állapot ===== */
-let g = { dev:null, server:null, svc:null, cfg:null, data:null, esp:{}, dwm:{} };
+let g = { dev:null, server:null, svc:null, cfg:null, data:null, esp:{}, dwm:{}, wifi:{} };
 
-let hbTimeoutMs    = 5000;   // ennyit várjon a "Nincs BLE kapcsolat..." előtt
-let noBleTimer     = null;   // erre rakjuk a setTimeout handle-t
+let hbTimeoutMs    = 5000;
+let noBleTimer     = null;
+let statusPeriodMs = 5000;
+let statusInterval = null;
+let uplinkInterval = null;
+let gBusy = false;
+const BUSY_BTNS = ['btnEspGet','btnDwmGet','btnApply','btnWifiLoad','btnWifiSave'];
 
-let statusPeriodMs = 5000;   // státusz polling periódus
-let statusInterval = null;   // setInterval handle
-
-/* ===== util + soros írható log ===== */
-
-// Tooltip helper – külső fájlból (super_tooltips.js)
 function getKeyTooltip(key){
   const t = window.SUPER_TOOLTIPS && SUPER_TOOLTIPS.keys && SUPER_TOOLTIPS.keys[key];
   return t || '';
 }
-
 function getInputTooltip(id){
   const t = window.SUPER_TOOLTIPS && SUPER_TOOLTIPS.inputs && SUPER_TOOLTIPS.inputs[id];
   return t || '';
 }
-
-// Fix mezők (svcUuid, cfgUuid, ...) tooltipeinek beállítása
 function applyFixedTooltips(){
   if (!window.SUPER_TOOLTIPS || !SUPER_TOOLTIPS.inputs) return;
   Object.entries(SUPER_TOOLTIPS.inputs).forEach(([id, text]) => {
@@ -605,26 +625,33 @@ function applyFixedTooltips(){
 
 function slog(s){
   if(serialWriter){
-    try{ serialWriter.write(s+'\n'); }catch(_){}
+    try{ serialWriter.write(s + '\n'); }catch(_){}
   }
 }
 function logln(s){
   const L = $('log');
   if(L){
     L.textContent += s + '\n';
-    L.scrollTop   = L.scrollHeight;
+    L.scrollTop = L.scrollHeight;
   }
   console.log(s);
   slog(s);
 }
+function setBusy(b){
+  gBusy = b;
+  for(const id of BUSY_BTNS){
+    const el = $(id);
+    if (el) el.disabled = b;
+  }
+}
+function setPillEl(id, state, text) {
+  const el = $(id);
+  if (!el) return;
+  el.classList.remove('ok', 'warn', 'err');
+  if (state) el.classList.add(state);
+  if (typeof text === 'string') el.textContent = text;
+}
 
-/* ===== Secure Context ellenőrzés ===== */
-(function(){
-  const w = $('warn');
-  if (w) w.style.display = 'none';
-})();
-
-/* ===== renderdef ===== */
 const GROUPS = {
   base: [
     {k:'NETWORK_ID', edit:true, to:'both'},
@@ -651,7 +678,7 @@ const GROUPS = {
       {k:'ETH_GW',   edit:true, to:'esp', label:'Alapértelmezett gateway'},
 
     {hdr:'Gateway'},
-      {k:'GW_ID',          edit:true, to:'esp', label:'Gateway ID'},
+      {k:'GW_ID', edit:true, to:'esp', label:'Gateway ID'},
 
     {hdr:'Titkosítás'},
       {k:'AES_KEY', edit:true, to:'esp', label:'AES kulcs (32 byte hex)'},
@@ -662,14 +689,14 @@ const GROUPS = {
       {k:'ZONE_CTRL_EN',   edit:true, to:'esp', label:'Zóna vezérlő ENGEDÉLY'},
 
     {hdr:'Fő szerver'},
-      {k:'MAIN_IP',        edit:true, to:'esp', label:'Fő szerver IP'},
-      {k:'MAIN_PORT',      edit:true, to:'esp', label:'Fő szerver PORT'},
-      {k:'MAIN_EN',        edit:true, to:'esp', label:'Fő szerver ENGEDÉLY'},
+      {k:'MAIN_IP',   edit:true, to:'esp', label:'Fő szerver IP'},
+      {k:'MAIN_PORT', edit:true, to:'esp', label:'Fő szerver PORT'},
+      {k:'MAIN_EN',   edit:true, to:'esp', label:'Fő szerver ENGEDÉLY'},
 
     {hdr:'Service'},
-      {k:'SERVICE_IP',     edit:true, to:'esp', label:'Service IP'},
-      {k:'SERVICE_PORT',   edit:true, to:'esp', label:'Service PORT'},
-      {k:'SERVICE_EN',     edit:true, to:'esp', label:'Service ENGEDÉLY'}
+      {k:'SERVICE_IP',   edit:true, to:'esp', label:'Service IP'},
+      {k:'SERVICE_PORT', edit:true, to:'esp', label:'Service PORT'},
+      {k:'SERVICE_EN',   edit:true, to:'esp', label:'Service ENGEDÉLY'}
   ],
   sync: [
     {k:'PPM_MAX',     edit:true, to:'dwm'},
@@ -703,7 +730,6 @@ const GROUPS = {
 function fmtZoneIdHex(v) {
   if (v == null) return "";
   if (typeof v === "string" && v.startsWith("0x")) {
-    // normalize: nagybetű, 4 számjegy
     const n = parseInt(v, 16);
     if (!Number.isFinite(n)) return "";
     return "0x" + n.toString(16).toUpperCase().padStart(4, "0");
@@ -712,12 +738,9 @@ function fmtZoneIdHex(v) {
   if (!Number.isFinite(n)) return "";
   return "0x" + n.toString(16).toUpperCase().padStart(4, "0");
 }
-
 function cell(v){
-  // ha nincs érték, kérdőjel jelenjen meg
   return `<td class="mono">${(v===undefined || v===null || v==='') ? '?' : v}</td>`;
 }
-
 function renderGroup(tblId, items, cfg){
   const { showEsp, showDwm } = cfg;
   const tb = qs(`#${tblId} tbody`);
@@ -725,51 +748,34 @@ function renderGroup(tblId, items, cfg){
     logln('[UI] hiányzó tábla: ' + tblId);
     return;
   }
-
   const colSpan = 1 + (showEsp ? 1 : 0) + (showDwm ? 1 : 0) + 1;
-
   tb.innerHTML = items.map(it => {
-    // alcím sor
     if (it.hdr) {
       return `<tr><td colspan="${colSpan}" class="muted" style="padding-top:10px;font-weight:600;">${it.hdr}</td></tr>`;
     }
-
     const key   = it.k;
     const label = it.label || key;
 
     let esp = (g.esp && g.esp[key] !== undefined) ? g.esp[key] : '';
     let dwm = (g.dwm && g.dwm[key] !== undefined) ? g.dwm[key] : '';
 
-    // ----- ZONE_ID: hex formázás a megjelenítéshez -----
     if (key === 'ZONE_ID') {
-      if (esp !== '-' && esp != null) {
-        esp = fmtZoneIdHex(esp);
-      }
-
+      if (esp !== '-' && esp != null) esp = fmtZoneIdHex(esp);
       let src = null;
       if (g.dwm) {
-        if (g.dwm.ZONE_ID_HEX)        src = g.dwm.ZONE_ID_HEX;
+        if (g.dwm.ZONE_ID_HEX) src = g.dwm.ZONE_ID_HEX;
         else if (g.dwm.ZONE_ID !== undefined) src = g.dwm.ZONE_ID;
       }
       if (src != null) dwm = fmtZoneIdHex(src);
       else dwm = '';
     }
-    // ----------------------------------------------------
 
-    // placeholder – ZONE_ID-nek hex minta
     let placeholder = 'új érték';
-    if (key === 'ZONE_ID') {
-      placeholder = '0x1234';
-    }
+    if (key === 'ZONE_ID') placeholder = '0x1234';
 
-    // TOOLTIP SZÖVEGEK
     const keyTip   = getKeyTooltip(key);
     const inputTip = getInputTooltip('in_'+key) || keyTip;
-
-    const labelHtml = keyTip
-      ? `<span title="${keyTip}">${label}</span>`
-      : label;
-
+    const labelHtml = keyTip ? `<span title="${keyTip}">${label}</span>` : label;
     const inputAttrs = inputTip ? ` title="${inputTip}"` : '';
 
     const input = it.edit
@@ -781,27 +787,8 @@ function renderGroup(tblId, items, cfg){
     if (showEsp) cells.push(cell(esp));
     if (showDwm) cells.push(cell(dwm));
     cells.push(`<td>${input}</td>`);
-
     return `<tr>${cells.join('')}</tr>`;
   }).join('');
-}
-
-function setPillEl(id, state, text) {
-  const el = $(id);
-  if (!el) return;
-
-  // régi állapotok leszedése
-  el.classList.remove('ok', 'warn', 'err');
-
-  // új állapot felrakása
-  if (state) {
-    el.classList.add(state);
-  }
-
-  // felirat frissítése, ha kaptunk szöveget
-  if (typeof text === 'string') {
-    el.textContent = text;
-  }
 }
 
 async function refreshStatus() {
@@ -810,37 +797,24 @@ async function refreshStatus() {
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const s = await r.json();
 
-    // BLE állapot (csak a BLE linket nézzük)
-    if (s.ble_up) {
-      setPillEl('pillBle', 'ok', 'BLE: kapcsolódva');
-    } else {
-      setPillEl('pillBle', 'err', 'BLE: nincs kapcsolat');
-    }
+    if (s.ble_up) setPillEl('pillBle', 'ok', 'BLE: kapcsolódva');
+    else setPillEl('pillBle', 'err', 'BLE: nincs kapcsolat');
 
-    // ---- ETH ----
-    if (s.eth_up) {
-      setPillEl('pillEth', 'ok',  'ETH: van IP');
-    } else {
-      setPillEl('pillEth', 'err', 'ETH: nincs IP');
-    }
+    if (s.eth_up) setPillEl('pillEth', 'ok', 'ETH: van IP');
+    else setPillEl('pillEth', 'err', 'ETH: nincs IP');
 
-    // ---- zóna / main / service engedély ----
-    setPillEl('pillZone',  s.zone_en    ? 'ok' : 'warn',
-              s.zone_en    ? 'Zóna vezérlő: engedélyezve' : 'Zóna vezérlő: tiltva');
+    setPillEl('pillZone', s.zone_en ? 'ok' : 'warn',
+      s.zone_en ? 'Zóna vezérlő: engedélyezve' : 'Zóna vezérlő: tiltva');
+    setPillEl('pillMain', s.main_en ? 'ok' : 'warn',
+      s.main_en ? 'Fő szerver: engedélyezve' : 'Fő szerver: tiltva');
+    setPillEl('pillServ', s.service_en ? 'err' : 'ok',
+      s.service_en ? 'Service: engedélyezve' : 'Service: tiltva');
 
-    setPillEl('pillMain',  s.main_en    ? 'ok' : 'warn',
-              s.main_en    ? 'Fő szerver: engedélyezve'   : 'Fő szerver: tiltva');
-
-    setPillEl('pillServ',  s.service_en ? 'err' : 'ok',
-              s.service_en ? 'Service: engedélyezve' : 'Service: tiltva');
-
-    // ---- Anchor / szinkron szöveg ----
     const as = $('anchorStatus');
     if (as) {
       let txt, level;
 
       if (!s.ble_up) {
-        // BLE down → itt jön a HB_MS-es késleltetés
         if (!noBleTimer) {
           noBleTimer = setTimeout(() => {
             const as2 = $('anchorStatus');
@@ -854,59 +828,22 @@ async function refreshStatus() {
         txt   = 'BLE kapcsolat bontása alatt…';
         level = 'warn';
       } else {
-        // BLE OK → töröljük az esetleges BLE timer-t
         if (noBleTimer) {
           clearTimeout(noBleTimer);
           noBleTimer = null;
         }
-
-        // Heartbeat állapot értelmezése a szerver által küldött hb_text és hb_level alapján.
-        // A /api/status válasz tartalmazza az anchor_status_to_text() által generált hb_text-et,
-        // valamint hb_level-t (ok/warn/err). Ezeket használjuk a megjelenítésre.
         if (s.hb_text !== undefined && s.hb_level !== undefined) {
           txt   = s.hb_text;
           level = s.hb_level;
         } else {
-          // Fallback: ha nincs hb_text/hb_level, próbáljuk meg bitkód alapján kitalálni
-          const hbCode = Number(s.hb_status);
-          if (Number.isFinite(hbCode)) {
-            const hasBle  = (hbCode & 1) !== 0;
-            const cfgNtf  = (hbCode & 2) !== 0;
-            const prelock = (hbCode & 4) !== 0;
-            const lock    = (hbCode & 8) !== 0;
-            if (!hasBle) {
-              txt   = 'Nincs BLE kapcsolat az anchorral';
-              level = 'err';
-            } else if (!cfgNtf) {
-              txt   = 'BLE OK, de HB/notify nincs engedélyezve';
-              level = 'warn';
-            } else if (!lock && !prelock) {
-              txt   = 'Nincs SYNC';
-              level = 'err';
-            } else if (lock && prelock) {
-              txt   = 'SYNC régi (WARN)';
-              level = 'warn';
-            } else if (lock) {
-              txt   = 'HB rendben';
-              level = 'ok';
-            } else if (prelock) {
-              txt   = 'SYNC felépülőben';
-              level = 'warn';
-            } else {
-              txt   = `HB státusz: ${hbCode}`;
-              level = 'warn';
-            }
-          } else {
-            txt   = 'Anchor állapot: ismeretlen';
-            level = 'warn';
-          }
+          txt = 'Anchor állapot: ismeretlen';
+          level = 'warn';
         }
       }
 
       as.textContent = txt;
       as.className   = 'anchor-status ' + level;
     }
-
   } catch (e) {
     logln('[STATUS] hiba: ' + e.message);
     setPillEl('pillEth', 'err', 'ETH: hiba');
@@ -914,26 +851,51 @@ async function refreshStatus() {
   }
 }
 
-// induláskor + időszakosan
-refreshStatus();
-statusInterval = setInterval(refreshStatus, statusPeriodMs);
+async function refreshUplinkStatus() {
+  try {
+    const r = await fetch('/api/uplink_status', { cache: 'no-store' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const u = await r.json();
 
-/* ===== események ===== */
-$('btnDwmGet'    ).addEventListener('click', doDwmGet);
-$('btnEspGet'    ).addEventListener('click', doEspGet);
-$('btnApply'     ).addEventListener('click', doSetBoth);
+    let wifiText = 'WIFI: ismeretlen';
+    let wifiState = 'warn';
+
+    if (u.wifi_connected && u.wifi_ip) {
+      wifiText = 'WIFI: van IP';
+      wifiState = 'ok';
+    } else if (u.wifi_connected) {
+      wifiText = 'WIFI: csatlakozva';
+      wifiState = 'warn';
+    } else if (u.wifi_started) {
+      wifiText = 'WIFI: indul';
+      wifiState = 'warn';
+    } else {
+      wifiText = 'WIFI: leállva';
+      wifiState = 'err';
+    }
+    setPillEl('pillWifi', wifiState, wifiText);
+
+    const live = $('wifiLive');
+    if (live) {
+      const uplink = u.active_uplink || 'ismeretlen';
+      const wifiAddr = u.wifi_addr || '0.0.0.0';
+      const ethInfo = `ETH: link=${u.eth_link ? 'igen' : 'nem'} ip=${u.eth_ip ? 'igen' : 'nem'}`;
+      const wifiInfo = `Wi‑Fi: started=${u.wifi_started ? 'igen' : 'nem'} connected=${u.wifi_connected ? 'igen' : 'nem'} ip=${u.wifi_ip ? 'igen' : 'nem'} addr=${wifiAddr}`;
+      live.textContent = `Aktív uplink: ${uplink} | ${ethInfo} | ${wifiInfo}`;
+    }
+  } catch (e) {
+    setPillEl('pillWifi', 'err', 'WIFI: hiba');
+    logln('[UPLINK] hiba: ' + e.message);
+  }
+}
 
 function renderAll(){
-  // közös: ESP + DWM
   renderGroup('tblBase', GROUPS.base, { showEsp:true, showDwm:true });
-  // ESP-only
   renderGroup('tblIps',  GROUPS.ips,  { showEsp:true, showDwm:false });
-  // DWM-only
   renderGroup('tblSync', GROUPS.sync, { showEsp:false, showDwm:true });
   renderGroup('tblPhy',  GROUPS.phy,  { showEsp:false, showDwm:true });
 }
 
-// ESP GET után, amikor megjön a config:
 async function doEspGet(){
   if (gBusy) return;
   setBusy(true);
@@ -941,19 +903,18 @@ async function doEspGet(){
   try{
     const hdr = {
       'Accept':'application/json',
-      'Authorization':'Basic '+btoa('admin:admin')
+      'Authorization':'Basic ' + btoa('admin:admin')
     };
     let r = await fetch('/api/config', { cache:'no-store', headers:hdr });
     if(!r.ok) r = await fetch('/api/esp_config', { cache:'no-store', headers:hdr });
-    if(!r.ok) throw new Error('HTTP '+r.status);
+    if(!r.ok) throw new Error('HTTP ' + r.status);
     g.esp = await r.json();
 
-    // HB_MS beolvasása
     if (g.esp.HB_MS) {
       const n = Number(g.esp.HB_MS);
       if (Number.isFinite(n) && n > 0) {
-        hbTimeoutMs = n;        // ennyit vár a "Nincs BLE kapcsolat..." felirat
-        statusPeriodMs = n;     // ha a pollingot is ehhez akarod igazítani
+        hbTimeoutMs = n;
+        statusPeriodMs = n;
         if (statusInterval) clearInterval(statusInterval);
         statusInterval = setInterval(refreshStatus, statusPeriodMs);
         logln('[ESP] HB_MS: ' + n + ' ms');
@@ -963,13 +924,12 @@ async function doEspGet(){
     renderAll();
     logln('[ESP] kész');
   }catch(e){
-    logln('[ESP] hiba: '+e.message);
+    logln('[ESP] hiba: ' + e.message);
   }finally{
     setBusy(false);
   }
 }
 
-/* ===== BLE helyett HTTP DWM GET ===== */
 async function doDwmGet() {
   if (gBusy) return;
   setBusy(true);
@@ -981,7 +941,6 @@ async function doDwmGet() {
     };
     const r = await fetch('/api/dwm_get', { cache: 'no-store', headers: hdr });
     if (!r.ok) throw new Error('HTTP ' + r.status);
-
     const j = await r.json();
     g.dwm = j;
     renderAll();
@@ -993,7 +952,6 @@ async function doDwmGet() {
   }
 }
 
-// ===== DWM RAM-cache GET (/api/dwm_last) – gyors, nem indít új BLE lekérdezést =====
 async function doDwmGetCached() {
   if (gBusy) return;
   setBusy(true);
@@ -1005,7 +963,6 @@ async function doDwmGetCached() {
     };
     const r = await fetch('/api/dwm_last', { cache: 'no-store', headers: hdr });
     if (!r.ok) throw new Error('HTTP ' + r.status);
-
     const j = await r.json();
     g.dwm = j;
     renderAll();
@@ -1017,7 +974,6 @@ async function doDwmGetCached() {
   }
 }
 
-/* ===== SET mindkettőnek ===== */
 function gatherInputs(){
   const outEsp = {};
   const outDwm = {};
@@ -1026,44 +982,33 @@ function gatherInputs(){
   for(const grp of groups){
     for(const it of grp){
       if (!it.k) continue;
-      const el = $('in_'+it.k);
+      const el = $('in_' + it.k);
       if(!el || el.disabled) continue;
-      let v;
+      let v = el.value.trim();
+      if (v === '') continue;
 
-      if (el.type === 'checkbox') {
-        // csúszó kapcsoló – mindig küldünk 0/1-et
-        v = el.checked ? '1' : '0';
-      } else {
-        v = el.value.trim();
-        if (v === '') continue;  // üres mező nem küldődik
+      if (it.k === 'ZONE_ID') {
+        if (!/^0x[0-9a-fA-F]+$/.test(v)) {
+          const n = Number(v);
+          if (!Number.isFinite(n)) {
+            alert('Hibás ZONE_ID: ' + v);
+            return null;
+          }
+          v = '0x' + n.toString(16).toUpperCase().padStart(4, '0');
+        } else {
+          const n = parseInt(v, 16);
+          if (!Number.isFinite(n)) {
+            alert('Hibás ZONE_ID: ' + v);
+            return null;
+          }
+          v = '0x' + n.toString(16).toUpperCase().padStart(4, '0');
+        }
+        el.value = v;
       }
 
-        if (it.k === 'ZONE_ID') {
-          // ha nem 0x-szel kezdődik, próbáljuk decimálisból konvertálni
-          if (!/^0x[0-9a-fA-F]+$/.test(v)) {
-            const n = Number(v);
-            if (!Number.isFinite(n)) {
-              alert('Hibás ZONE_ID: ' + v);
-              return null; // jelezz hibát a hívónak
-            }
-            v = '0x' + n.toString(16).toUpperCase().padStart(4, '0');
-          } else {
-            // 0x-szel kezdődik, normalizáljuk
-            const n = parseInt(v, 16);
-            if (!Number.isFinite(n)) {
-              alert('Hibás ZONE_ID: ' + v);
-              return null;
-            }
-            v = '0x' + n.toString(16).toUpperCase().padStart(4, '0');
-          }
-          // input mezőbe is visszaírjuk normalizálva
-          el.value = v;
-        }
-
-        const dest = it.to || 'both';
-        if (dest === 'esp'  || dest === 'both') outEsp[it.k] = v;
-        if (dest === 'dwm'  || dest === 'both') outDwm[it.k] = v;
-
+      const dest = it.to || 'both';
+      if (dest === 'esp' || dest === 'both') outEsp[it.k] = v;
+      if (dest === 'dwm' || dest === 'both') outDwm[it.k] = v;
     }
   }
   return { esp: outEsp, dwm: outDwm };
@@ -1116,19 +1061,75 @@ async function doSetBoth(){
   }
 }
 
-const BUSY_BTNS = ['btnEspGet','btnDwmGet','btnApply'];
-let gBusy = false;
+function setWiFiStaticDisabled(disabled){
+  document.querySelectorAll('.wifi-static').forEach(el => {
+    el.disabled = !!disabled;
+  });
+}
 
-function setBusy(b){
-  gBusy = b;
-  for(const id of BUSY_BTNS){
-    const el = $(id);
-    if (el) el.disabled = b;
+async function loadWiFiCfgFromEsp(){
+  if (gBusy) return;
+  setBusy(true);
+  try{
+    const r = await fetch('/api/wifi_config', { cache:'no-store' });
+    if(!r.ok) throw new Error('HTTP ' + r.status);
+    const c = await r.json();
+    g.wifi = c;
+
+    $('wifiEnabled').checked = !!c.enabled;
+    $('wifiDhcp').checked = !!c.dhcp;
+    $('wifiSsid').value = c.ssid || '';
+    $('wifiPass').value = '';
+    $('wifiPass').placeholder = c.password_set ? 'Üresen hagyva marad a mentett' : 'Nincs mentett jelszó';
+    $('wifiIp').value = c.ip || '';
+    $('wifiMask').value = c.mask || '';
+    $('wifiGw').value = c.gw || '';
+    $('wifiDns1').value = c.dns1 || '';
+    $('wifiDns2').value = c.dns2 || '';
+
+    setWiFiStaticDisabled(!!c.dhcp);
+    logln('[WIFI] Konfig betöltve az ESP-ről.');
+  }catch(e){
+    logln('[WIFI] Betöltési hiba: ' + e.message);
+  }finally{
+    setBusy(false);
   }
 }
 
-/* ===== Web Serial ===== */
-let serialReader = null;
+async function saveWiFiCfgToEsp(){
+  if (gBusy) return;
+  setBusy(true);
+  try{
+    const body = {
+      enabled: $('wifiEnabled').checked ? 1 : 0,
+      dhcp: $('wifiDhcp').checked ? 1 : 0,
+      ssid: $('wifiSsid').value.trim(),
+      password: $('wifiPass').value,
+      ip: $('wifiIp').value.trim(),
+      mask: $('wifiMask').value.trim(),
+      gw: $('wifiGw').value.trim(),
+      dns1: $('wifiDns1').value.trim(),
+      dns2: $('wifiDns2').value.trim()
+    };
+
+    const r = await fetch('/api/wifi_config', {
+      method: 'POST',
+      headers: { 'Content-Type':'application/json' },
+      body: JSON.stringify(body)
+    });
+    if(!r.ok) throw new Error('HTTP ' + r.status);
+    const j = await r.json().catch(() => ({}));
+    logln('[WIFI] Konfig mentve: ' + JSON.stringify({ ...body, password: body.password ? '***' : '' }));
+    if (j && j.ok === false) logln('[WIFI] Válasz: ' + JSON.stringify(j));
+
+    await loadWiFiCfgFromEsp();
+    await refreshUplinkStatus();
+  }catch(e){
+    logln('[WIFI] Mentési hiba: ' + e.message);
+  }finally{
+    setBusy(false);
+  }
+}
 
 async function openSerial(){
   if(!('serial' in navigator)){
@@ -1157,56 +1158,11 @@ async function openSerial(){
         if(done) break;
         if(value) logln(value.replace(/\r?\n/g,'\n'));
       }
-    })().catch(e => logln('[SERIAL] hiba: '+e));
+    })().catch(e => logln('[SERIAL] hiba: ' + e));
   }catch(e){
-    logln('[SERIAL] nyitási hiba: '+e);
+    logln('[SERIAL] nyitási hiba: ' + e);
   }
 }
-renderAll();
-applyFixedTooltips();   // <<< ÚJ – a fix inputok title-jei
-
-// Oldalbetöltéskor automatikusan:
-//  - ESP config lekérdezés (/api/config) – gyors
-//  - DWM RAM-cache lekérdezés (/api/dwm_last) – gyors
-doEspGet();
-doDwmGetCached();
-loadBleCfgFromEsp();
-
-$('btnLogout').addEventListener('click', () => {
-  // Session cookie érvénytelenítése
-  document.cookie = "SID=; Path=/; Max-Age=0;";
-
-  // Átirányítás a login oldalra
-  window.location.href = "/login";
-});
-
-$('btnRebootEsp').addEventListener('click', async () => {
-  if (!confirm("Biztosan újraindítod az ESP-t?")) return;
-
-  try {
-    const r = await fetch('/api/reboot', {
-      method: 'POST',
-      headers: { 'Authorization': 'Basic ' + btoa('admin:admin') }
-    });
-    logln('[ESP] újraindítás kérve');
-
-    // Kis várakozás, majd reload
-    setTimeout(() => { location.reload(); }, 1500);
-
-  } catch (e) {
-    logln('[ESP] reboot hiba: ' + e.message);
-  }
-});
-
-$('btnToStats').addEventListener('click', () => {
-  window.location.href = "/stats";
-});
-
-// Új eseménykezelő a jelszó gombhoz
-$('btnPasswd').addEventListener('click', () => {
-  // átirányítás az új jelszó módosító oldalra
-  window.location.href = "/passwd";
-});
 
 async function loadBleCfgFromEsp() {
   try {
@@ -1218,10 +1174,7 @@ async function loadBleCfgFromEsp() {
     $('cfgUuid').value  = c.BLE_CFG_UUID  || '';
     $('dataUuid').value = c.BLE_DATA_UUID || '';
     $('reqId').value    = (c.BLE_REQ_ID != null ? c.BLE_REQ_ID : 1);
-
-    if ($('bleName')) {
-        $('bleName').value = c.BLE_NAME || '';
-    }
+    $('bleName').value  = c.BLE_NAME || '';
 
     logln('[BLE] Konfig betöltve az ESP-ről.');
   } catch (e) {
@@ -1231,11 +1184,6 @@ async function loadBleCfgFromEsp() {
 
 async function saveBleCfgToEsp() {
   try {
-    const nameInput = $('bleName');
-    const bleName = (nameInput && nameInput.value.trim())
-      ? nameInput.value.trim()
-      : 'UWB_ANCHOR_01';
-
     const body = {
       BLE_NAME:      $('bleName').value.trim(),
       BLE_SVC_UUID:  $('svcUuid').value.trim(),
@@ -1251,21 +1199,15 @@ async function saveBleCfgToEsp() {
     });
     if (!r.ok) throw new Error('HTTP ' + r.status);
 
-    const resp = await r.json();
-
-    if (resp.ok) {
+    const resp = await r.json().catch(() => ({}));
+    if (resp.ok !== false) {
       logln('[BLE] Konfig elmentve NVS-be. BLE kliens újraindítás...');
-
       try {
-        await fetch('/api/reboot_ble', {
-          method: 'POST'
-        });
+        await fetch('/api/reboot_ble', { method: 'POST' });
         logln('[BLE] kliens újraindítva (új név / UUID-ek aktiválva).');
       } catch (e2) {
         logln('[BLE] restart hiba: ' + e2.message);
       }
-
-      // ha akarsz reloadot, maradhat:
       setTimeout(() => { location.reload(); }, 1500);
     } else {
       logln('[BLE] Mentés válasz: ' + JSON.stringify(resp));
@@ -1275,6 +1217,42 @@ async function saveBleCfgToEsp() {
   }
 }
 
+$('btnBleLoad').addEventListener('click', loadBleCfgFromEsp);
+$('btnBleSave').addEventListener('click', saveBleCfgToEsp);
+$('btnDwmGet').addEventListener('click', doDwmGet);
+$('btnEspGet').addEventListener('click', doEspGet);
+$('btnApply').addEventListener('click', doSetBoth);
+$('btnWifiLoad').addEventListener('click', loadWiFiCfgFromEsp);
+$('btnWifiSave').addEventListener('click', saveWiFiCfgToEsp);
+$('wifiDhcp').addEventListener('change', () => setWiFiStaticDisabled($('wifiDhcp').checked));
+
+$('btnLogout').addEventListener('click', () => {
+  document.cookie = "SID=; Path=/; Max-Age=0;";
+  window.location.href = "/login";
+});
+$('btnRebootEsp').addEventListener('click', async () => {
+  if (!confirm("Biztosan újraindítod az ESP-t?")) return;
+  try {
+    await fetch('/api/reboot', { method: 'POST' });
+    logln('[ESP] újraindítás kérve');
+    setTimeout(() => { location.reload(); }, 1500);
+  } catch (e) {
+    logln('[ESP] reboot hiba: ' + e.message);
+  }
+});
+$('btnToStats').addEventListener('click', () => { window.location.href = "/stats"; });
+$('btnPasswd').addEventListener('click', () => { window.location.href = "/passwd"; });
+
+renderAll();
+applyFixedTooltips();
+doEspGet();
+doDwmGetCached();
+loadBleCfgFromEsp();
+loadWiFiCfgFromEsp();
+refreshStatus();
+refreshUplinkStatus();
+statusInterval = setInterval(refreshStatus, statusPeriodMs);
+uplinkInterval = setInterval(refreshUplinkStatus, 5000);
 </script>
 </body>
 </html>
