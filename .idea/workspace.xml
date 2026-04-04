@@ -4,8 +4,17 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="d7727baf-cd08-430d-884d-b4e040b4a9ee" name="Changes" comment="a3">
+    <list default="true" id="d7727baf-cd08-430d-884d-b4e040b4a9ee" name="Changes" comment="16:29">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/ethernet/CMakeLists.txt" beforeDir="false" afterPath="$PROJECT_DIR$/components/ethernet/CMakeLists.txt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/ethernet/ethernet.c" beforeDir="false" afterPath="$PROJECT_DIR$/components/ethernet/ethernet.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/ethernet/ethernet.h" beforeDir="false" afterPath="$PROJECT_DIR$/components/ethernet/ethernet.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/ethernet/ethernet_sender/aes_sender.c" beforeDir="false" afterPath="$PROJECT_DIR$/components/ethernet/ethernet_sender/aes_sender.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/webserver/CMakeLists.txt" beforeDir="false" afterPath="$PROJECT_DIR$/components/webserver/CMakeLists.txt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/webserver/http_server.c" beforeDir="false" afterPath="$PROJECT_DIR$/components/webserver/http_server.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/main/CMakeLists.txt" beforeDir="false" afterPath="$PROJECT_DIR$/main/CMakeLists.txt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/main/main.c" beforeDir="false" afterPath="$PROJECT_DIR$/main/main.c" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/partitions.csv" beforeDir="false" afterPath="$PROJECT_DIR$/partitions.csv" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -73,7 +82,6 @@
   <component name="SharedIndexes">
     <attachedChunks>
       <set>
-        <option value="bundled-js-predefined-d6986cc7102b-3aa1da707db6-JavaScript-PY-252.26830.99" />
         <option value="bundled-python-sdk-164cda30dcd9-0af03a5fa574-com.jetbrains.pycharm.pro.sharedIndexes.bundled-PY-252.26830.99" />
       </set>
     </attachedChunks>
@@ -104,14 +112,6 @@
       <workItem from="1765039705857" duration="316000" />
       <workItem from="1765128029078" duration="2053000" />
       <workItem from="1775312910847" duration="17000" />
-    </task>
-    <task id="LOCAL-00053" summary="a3">
-      <option name="closed" value="true" />
-      <created>1764514636024</created>
-      <option name="number" value="00053" />
-      <option name="presentableId" value="LOCAL-00053" />
-      <option name="project" value="LOCAL" />
-      <updated>1764514636024</updated>
     </task>
     <task id="LOCAL-00054" summary="a3">
       <option name="closed" value="true" />
@@ -497,7 +497,15 @@
       <option name="project" value="LOCAL" />
       <updated>1765128440450</updated>
     </task>
-    <option name="localTasksCounter" value="102" />
+    <task id="LOCAL-00102" summary="16:29">
+      <option name="closed" value="true" />
+      <created>1775313002531</created>
+      <option name="number" value="00102" />
+      <option name="presentableId" value="LOCAL-00102" />
+      <option name="project" value="LOCAL" />
+      <updated>1775313002531</updated>
+    </task>
+    <option name="localTasksCounter" value="103" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -519,6 +527,7 @@
     <MESSAGE value="a" />
     <MESSAGE value="a2" />
     <MESSAGE value="a3" />
-    <option name="LAST_COMMIT_MESSAGE" value="a3" />
+    <MESSAGE value="16:29" />
+    <option name="LAST_COMMIT_MESSAGE" value="16:29" />
   </component>
 </project>

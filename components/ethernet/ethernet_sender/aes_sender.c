@@ -119,14 +119,10 @@ void aes_sender_set_key_hex(const char *hex32)
 
 void aes_sender_send_line(const char *line)
 {
-    //aes_sender_set_key_hex("00112233445566778899AABBCCDDEEFF");
-
     if (!line || !line[0]) {
         ESP_LOGW("AES_SENDER", "empty line, skip");
         return;
     }
-
-    //ESP_LOGI("AES_SENDER", "send_line: '%s'", line);
 
     if (!s_key_set) {
         ESP_LOGE("AES_SENDER", "key not set, DROP");
@@ -145,7 +141,6 @@ void aes_sender_send_line(const char *line)
     uint8_t out[16 + 512];
     size_t enc_len = 0;
 
-    // ESP_LOGI("AES_SENDER", "before encrypt: plain_len=%u", (unsigned)plain_len);
     bool ok = encrypt_ctr((const uint8_t*)line,
                           plain_len,
                           out,
@@ -156,30 +151,17 @@ void aes_sender_send_line(const char *line)
         return;
     }
 
-    // ESP_LOGI("AES_SENDER", "after encrypt: enc_len=%u", (unsigned)enc_len);
-
     extern ips_config_t IPS;
 
     for (int i = 0; i < 3; i++) {
         if (!IPS.dest[i].enabled) continue;
 
         struct sockaddr_in sa = { 0 };
-        // KPI: minden sikeres UDP küldés egy ETH csomag
-        ble_logger_on_eth_packet();
-
-        sendto(s_sock, out, enc_len, 0,
-               (struct sockaddr*)&sa, sizeof(sa));
-
         sa.sin_family      = AF_INET;
         sa.sin_port        = htons(IPS.dest[i].dest_port);
         sa.sin_addr.s_addr = IPS.dest[i].dest_ip.addr;
 
-        /*ESP_LOGI("AES_SENDER",
-                 "sendto idx=%d ip=%08X port=%u len=%u",
-                 i,
-                 (unsigned)IPS.dest[i].dest_ip.addr,
-                 (unsigned)IPS.dest[i].dest_port,
-                 (unsigned)enc_len);*/
+        ble_logger_on_eth_packet();
 
         sendto(s_sock, out, enc_len, 0,
                (struct sockaddr*)&sa, sizeof(sa));

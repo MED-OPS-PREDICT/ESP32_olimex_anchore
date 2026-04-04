@@ -6,8 +6,7 @@ idf_component_register(
     "web_stats.c"
   INCLUDE_DIRS "."
   PRIV_REQUIRES main key_storage
-  REQUIRES esp_http_server nvs_flash esp_netif spiffs mbedtls esp_timer json
+  REQUIRES esp_http_server nvs_flash esp_netif spiffs mbedtls esp_timer json wifi_manager
 )
 
 spiffs_create_partition_image(spiffs spiffs FLASH_IN_PROJECT)
-

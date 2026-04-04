@@ -1,5 +1,6 @@
 #include <string.h>
 #include <stdio.h>
+#include <stdbool.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_event.h"
@@ -10,7 +11,6 @@
 #include "globals.h"
 #include "ble.h"
 #include "pretty_print.h"
-// #include "webserver.h"
 #include "esp_spiffs.h"
 #include "webserver.hpp"
 #include "uwb_cfg_cli.h"
@@ -18,6 +18,7 @@
 #include "ethernet_sender/ble_logger.h"
 #include "aes_sender.h"
 #include "web_stats.h"
+#include "wifi_manager.h"
 
 static const char *TAG = "main";
 
@@ -31,10 +32,9 @@ static void fs_mount(void){
     esp_err_t err = esp_vfs_spiffs_register(&conf);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "SPIFFS mount failed: %s", esp_err_to_name(err));
-        return; // ne ESP_ERROR_CHECK, különben abortál
+        return;
     }
 }
-
 
 /* ===== Kisegítő BE olvasók ===== */
 static inline uint16_t rd16be(const uint8_t* v){ return ((uint16_t)v[0]<<8) | v[1]; }
@@ -46,7 +46,7 @@ static void __attribute__((unused)) parse_cfg_notify(const uint8_t* p, uint16_t 
     if (n==6 && p[0]==1 && p[1]==0x81){
         uint16_t req = rd16be(&p[2]);
         uint8_t status = p[4], applied = p[5];
-        (void)req; (void)status; (void)applied;   // elnyomjuk a warningokat
+        (void)req; (void)status; (void)applied;
         return;
     }
     if (n==17 && p[0]==1 && p[1]==0x90){
@@ -59,16 +59,15 @@ static void __attribute__((unused)) parse_cfg_notify(const uint8_t* p, uint16_t 
         (void)st; (void)sync; (void)up; (void)netid; (void)zone; (void)anc;
         return;
     }
-    // TLV stream: [t,l,val...] egymás után (HB vagy GET snapshot)
     const uint8_t* q=p; uint16_t r=n;
     while (r>=2){
         uint8_t t=q[0], l=q[1]; q+=2; r-=2;
         if (r<l){ ESP_LOGW(TAG,"TRUNC tlv t=0x%02X need=%u have=%u",t,(unsigned)l,(unsigned)r); break; }
         switch(t){
-            case 0x00: if(l==1) ESP_LOGI(TAG,"VER=%u", (unsigned)q[0]); break;                 // T_VER
-            case 0x01: if(l==1) ESP_LOGI(TAG,"STATUS=0x%02X", (unsigned)q[0]); break;         // T_STATUS
-            case 0x02: if(l==4) ESP_LOGI(TAG,"UPTIME_MS=%u", (unsigned)rd32be(q)); break;     // T_UPTIME_MS
-            case 0x03: if(l==2) ESP_LOGI(TAG,"SYNC_MS=%u", (unsigned)rd16be(q)); break;       // T_SYNC_MS
+            case 0x00: if(l==1) ESP_LOGI(TAG,"VER=%u", (unsigned)q[0]); break;
+            case 0x01: if(l==1) ESP_LOGI(TAG,"STATUS=0x%02X", (unsigned)q[0]); break;
+            case 0x02: if(l==4) ESP_LOGI(TAG,"UPTIME_MS=%u", (unsigned)rd32be(q)); break;
+            case 0x03: if(l==2) ESP_LOGI(TAG,"SYNC_MS=%u", (unsigned)rd16be(q)); break;
             case 0x10: if(l==2) ESP_LOGI(TAG,"NETWORK_ID=%u", (unsigned)rd16be(q)); break;
             case 0x11: if(l==2) ESP_LOGI(TAG,"ZONE_ID=0x%04X", (unsigned)rd16be(q)); break;
             case 0x12: if(l==4) ESP_LOGI(TAG,"ANCHOR_ID=0x%08X", (unsigned)rd32be(q)); break;
@@ -94,7 +93,6 @@ static void __attribute__((unused)) parse_cfg_notify(const uint8_t* p, uint16_t 
 }
 
 static void on_ble_notify(const uint8_t* data, uint16_t len, bool from_cfg) {
-    //ESP_LOGI("BLE", "[%s] len=%u", from_cfg ? "CFG" : "DATA", (unsigned)len);
     if (from_cfg)
         pp_log_cfg(data, len, NULL, rd16be, rd32be);
     else
@@ -103,11 +101,10 @@ static void on_ble_notify(const uint8_t* data, uint16_t len, bool from_cfg) {
 
 /* ===== SET példa ===== */
 static esp_err_t send_cfg_example(void) {
-    /* NETWORK_ID=2 (T=0x10, l=2), HB_MS=5000 (T=0x20, l=2) */
     uint8_t tlv[2+2 + 2+2];
     uint8_t *w = tlv;
     *w++ = 0x10; *w++ = 2; *w++ = 0x00; *w++ = 0x02;
-    *w++ = 0x20; *w++ = 2; *w++ = 0x13; *w++ = 0x88; // 5000
+    *w++ = 0x20; *w++ = 2; *w++ = 0x13; *w++ = 0x88;
     return ble_send_set(2, tlv, sizeof(tlv));
 }
 
@@ -116,12 +113,37 @@ static void nvs_init_or_erase(void){
     if(r==ESP_ERR_NVS_NO_FREE_PAGES || r==ESP_ERR_NVS_NEW_VERSION_FOUND){ nvs_flash_erase(); nvs_flash_init(); }
 }
 
+static void network_failover_task(void *arg)
+{
+    (void)arg;
+
+    for (;;) {
+        bool eth_ready = ethernet_is_link_up() || ethernet_has_ip();
+
+        if (eth_ready) {
+            if (wifi_manager_is_started()) {
+                ESP_LOGI(TAG, "Ethernet active -> stopping Wi-Fi fallback");
+                wifi_manager_stop();
+            }
+        } else {
+            if (wifi_manager_should_run() && !wifi_manager_is_started()) {
+                ESP_LOGI(TAG, "Ethernet unavailable -> starting Wi-Fi fallback");
+                wifi_manager_start();
+            }
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(2000));
+    }
+}
+
 void app_main(void)
 {
-    nvs_init_or_erase();           // 1) Először NVS
-    globals_init();                // 2) Ezután olvasd be a globális konfigot (IP stb.)
+    nvs_init_or_erase();
+    globals_init();
     esp_event_loop_create_default();
     esp_netif_init();
+
+    ESP_ERROR_CHECK(wifi_manager_init());
 
     ethernet_ctx_t eth = {0};
     ethernet_init(&eth);
@@ -131,7 +153,12 @@ void app_main(void)
     web_stats_init();
     webserver_start();
 
-    // BLE konfig beolvasása a NVS-ből (webserver a load-ot hívja, de ha biztosra akarsz menni, meghívhatod egyszer itt is)
+    if (!ethernet_is_link_up() && wifi_manager_should_run()) {
+        wifi_manager_start();
+    }
+
+    xTaskCreate(network_failover_task, "net_failover", 4096, NULL, 5, NULL);
+
     const web_ble_cfg_t* bcfg = web_ble_cfg_get();
     const char* ble_name = (bcfg && bcfg->name[0]) ? bcfg->name : "UWB_ANCHOR_01";
 
@@ -141,18 +168,14 @@ void app_main(void)
         }
     }
 
-    /* BLE: opcionális name filter, pl. "UWB_ANCHOR_01" */
-    // ble_start("UWB_ANCHOR_01", on_ble_notify);
     ble_start(ble_name, on_ble_notify);
 
     uwb_cfg_cli_init();
     ble_register_notify_cb(uwb_notify_cb);
 
-    // példa GET kérés 600ms után:
     vTaskDelay(pdMS_TO_TICKS(600));
     ble_send_get(1);
 
-    // példa SET 1s után
     vTaskDelay(pdMS_TO_TICKS(400));
     send_cfg_example();
 }

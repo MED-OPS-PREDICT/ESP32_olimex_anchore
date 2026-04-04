@@ -14,32 +14,34 @@
 #include "esp_log.h"
 
 #include "cJSON.h"
-#include "ble.h"          // ble_register_notify_cb(), ble_send_get()
-#include "uwb_cfg_cli.h"  // uwb_cfg_cli_set_from_json()
+#include "ble.h"
+#include "uwb_cfg_cli.h"
 #include "hb_status.h"
+#include "wifi_manager.h"
+#include "ethernet.h"
 
 /* ====== Általános ====== */
 static const char* TAG = "HTTP_BRIDGE";
 
 /* Egy kérés sorosítása mindenki számára */
-static SemaphoreHandle_t s_ble_lock;          // globális mutex
-static SemaphoreHandle_t s_sem_ack;           // SET-ACK jelzés
-static SemaphoreHandle_t s_sem_tlv;           // TLV érkezés / DONE jelzés
+static SemaphoreHandle_t s_ble_lock;
+static SemaphoreHandle_t s_sem_ack;
+static SemaphoreHandle_t s_sem_tlv;
 
 /* GET ciklus állapot */
-static uint16_t s_last_req = 0;               // BLE GET request számláló
-static volatile bool s_cfg_done = false;      // DONE érkezett
-static volatile TickType_t s_last_line_tick = 0; // utolsó LINE ideje
+static uint16_t s_last_req = 0;
+static volatile bool s_cfg_done = false;
+static volatile TickType_t s_last_line_tick = 0;
 
 /* BLE → feldolgozó sor (callbackben csak ide írunk) */
 typedef struct {
     uint16_t len;
     bool     from_cfg;
-    uint8_t  data[];          // rugalmas tömbvég
+    uint8_t  data[];
 } frame_t;
 
-static QueueHandle_t   s_q;                   // bejövő keretek
-static TaskHandle_t    s_worker;              // feldolgozó task
+static QueueHandle_t   s_q;
+static TaskHandle_t    s_worker;
 
 /* ====== Segédek ====== */
 static inline uint16_t rd16be(const uint8_t* p){ return ((uint16_t)p[0] << 8) | p[1]; }
@@ -53,17 +55,14 @@ enum {
     H_TX_ANT_DLY, H_RX_ANT_DLY, H_BIAS_TICKS,
     H_PHY_CH, H_PHY_SFDTO,
 
-    // SYN*
     H_SYN_PPM_MAX, H_SYN_JUMP_PPM, H_SYN_AB_GAP_MS, H_SYN_MS_EWMA_DEN,
     H_SYN_TK_EWMA_DEN, H_SYN_TK_MIN_MS, H_SYN_TK_MAX_MS,
     H_SYN_DTTX_MIN_MS, H_SYN_DTTX_MAX_MS, H_SYN_LOCK_NEED,
 
-    // PHY extra
     H_PHY_PLEN, H_PHY_PAC, H_PHY_TX_CODE, H_PHY_RX_CODE,
     H_PHY_SFD, H_PHY_BR, H_PHY_PHRMODE, H_PHY_PHRRATE,
     H_PHY_STS_MODE, H_PHY_STS_LEN, H_PHY_PDOA,
 
-    // ÁLLAPOT
     H_STATUS, H_UPTIME_MS, H_SYNC_MS,
 
     H__COUNT
@@ -75,27 +74,22 @@ static struct {
     int32_t  tx_ant_dly, rx_ant_dly, bias_ticks;
     uint8_t  log_level, phy_ch;
 
-    // SYN*
     uint16_t syn_ppm_max, syn_jump_ppm, syn_ab_gap_ms,
              syn_tk_min_ms, syn_tk_max_ms,
              syn_dttx_min_ms, syn_dttx_max_ms;
     uint8_t  syn_ms_ewma_den, syn_tk_ewma_den, syn_lock_need;
 
-    // PHY extra
     uint8_t  phy_plen, phy_pac, phy_tx_code, phy_rx_code, phy_sfd, phy_br,
              phy_phrmode, phy_phrrate, phy_sts_mode, phy_sts_len, phy_pdoa;
 
-    // Állapot
     uint8_t  status;
     uint32_t uptime_ms, sync_ms;
 
     bool     have[H__COUNT];
 } s_cfg;
 
-// --- ÚJ segédfüggvény: s_cfg -> JSON objektum ---
 static void build_cfg_json(cJSON *j)
 {
-    // Állapot
     if (s_cfg.have[H_STATUS])
         cJSON_AddNumberToObject(j, "STATUS", s_cfg.status);
     if (s_cfg.have[H_UPTIME_MS])
@@ -103,7 +97,6 @@ static void build_cfg_json(cJSON *j)
     if (s_cfg.have[H_SYNC_MS])
         cJSON_AddNumberToObject(j, "SYNC_MS", s_cfg.sync_ms);
 
-    // Alap kulcsok
     if (s_cfg.have[H_NETWORK_ID])
         cJSON_AddNumberToObject(j, "NETWORK_ID", s_cfg.network_id);
 
@@ -136,7 +129,6 @@ static void build_cfg_json(cJSON *j)
     if (s_cfg.have[H_PHY_SFDTO])
         cJSON_AddNumberToObject(j, "PHY_SFDTO", s_cfg.phy_sfdto);
 
-    // SYN*
     if (s_cfg.have[H_SYN_PPM_MAX])
         cJSON_AddNumberToObject(j, "PPM_MAX", s_cfg.syn_ppm_max);
     if (s_cfg.have[H_SYN_JUMP_PPM])
@@ -158,7 +150,6 @@ static void build_cfg_json(cJSON *j)
     if (s_cfg.have[H_SYN_LOCK_NEED])
         cJSON_AddNumberToObject(j, "LOCK_NEED", s_cfg.syn_lock_need);
 
-    // PHY extra
     if (s_cfg.have[H_PHY_PLEN])
         cJSON_AddNumberToObject(j, "PHY_PLEN", s_cfg.phy_plen);
     if (s_cfg.have[H_PHY_PAC])
@@ -183,33 +174,22 @@ static void build_cfg_json(cJSON *j)
         cJSON_AddNumberToObject(j, "PHY_PDOA", s_cfg.phy_pdoa);
 }
 
-/* csak *egyszer* */
 static void reset_cfg(void)
 {
     memset(&s_cfg, 0, sizeof(s_cfg));
 }
 
-/* csak ez az egy maradjon */
 static uint8_t s_tlv_section = 1;
-
-// "HB: HB status=11 uptime=4322864 ms sync_ms=3388" sorok parszolása
-// http_server.c elején legyen:
-// #include <inttypes.h>
 
 static void try_parse_hb_line(const uint8_t *p, uint16_t n)
 {
-    // minimális sanity check
-    const uint16_t MIN_HB_LEN = 13;   // ver,type,status,sync,uputime,net,zone,anchor
+    const uint16_t MIN_HB_LEN = 13;
     if (!p || n < MIN_HB_LEN) {
         ESP_LOGW(TAG, "HB packet too short or NULL (len=%u)", (unsigned)n);
         return;
     }
 
-    // ----- bináris mezők (little endian) -----
-    uint8_t  ver   = p[0];
-    uint8_t  type  = p[1];
     uint8_t  st    = p[2];
-
     uint16_t sync  = (uint16_t)p[3]  | ((uint16_t)p[4]  << 8);
     uint32_t up    = (uint32_t)p[5]  | ((uint32_t)p[6]  << 8)
                                    | ((uint32_t)p[7]  << 16)
@@ -220,40 +200,20 @@ static void try_parse_hb_line(const uint8_t *p, uint16_t n)
                                    | ((uint32_t)p[15] << 16)
                                    | ((uint32_t)p[16] << 24);
 
-    // opcionális, de hasznos egy rövid log
-    /*ESP_LOGI(TAG,
-             "HB: ver=%u type=0x%02X status=0x%02X sync_ms=%u uptime_ms=%" PRIu32
-             " net_id=%u zone_id=%u anchor_id=0x%08" PRIX32,
-             (unsigned)ver,
-             (unsigned)type,
-             (unsigned)st,
-             (unsigned)sync,
-             (uint32_t)up,
-             (unsigned)netid,
-             (unsigned)zone,
-             (uint32_t)aid);*/
-
-    // ----- s_cfg frissítése -----
     s_cfg.status            = (uint8_t)st;
     s_cfg.have[H_STATUS]    = true;
-
     s_cfg.uptime_ms         = up;
     s_cfg.have[H_UPTIME_MS] = true;
-
     s_cfg.sync_ms           = sync;
     s_cfg.have[H_SYNC_MS]   = true;
-
     s_cfg.network_id        = netid;
     s_cfg.have[H_NETWORK_ID]= true;
-
     s_cfg.zone_id           = zone;
     s_cfg.have[H_ZONE_ID]   = true;
-
     s_cfg.anchor_id         = aid;
     s_cfg.have[H_ANCHOR_ID] = true;
 }
 
-/* ====== TLV blokk feldolgozása ====== */
 static bool parse_tlvs_and_update(const uint8_t* p, uint16_t n)
 {
     if (!p || n < 2) return false;
@@ -264,19 +224,17 @@ static bool parse_tlvs_and_update(const uint8_t* p, uint16_t n)
         p += 2; n -= 2;
         if (n < l) break;
 
-        /* T_VER (0x00) – szekció kijelölése a *globális* s_tlv_section-ben */
         if (t == 0x00 && l >= 1) {
             uint8_t ver = p[0];
-            if      (ver == 1) s_tlv_section = 1;  // CURRENT
-            else if (ver == 2) s_tlv_section = 2;  // DEFAULTS
-            else               s_tlv_section = 0;  // ismeretlen
+            if      (ver == 1) s_tlv_section = 1;
+            else if (ver == 2) s_tlv_section = 2;
+            else               s_tlv_section = 0;
 
             p += l;
             n -= l;
             continue;
         }
 
-        /* Csak a CURRENT (ver=1) TLV-ket dolgozzuk fel */
         if (s_tlv_section != 1) {
             p += l;
             n -= l;
@@ -284,13 +242,9 @@ static bool parse_tlvs_and_update(const uint8_t* p, uint16_t n)
         }
 
         switch(t){
-
-            /* Status / uptime */
             case 0x01: if (l==1) { s_cfg.status    = p[0]; s_cfg.have[H_STATUS]=true; changed=true; log_set_u("STATUS", s_cfg.status); } break;
             case 0x02: if (l==4) { s_cfg.uptime_ms = rd32be(p); s_cfg.have[H_UPTIME_MS]=true; changed=true; log_set_u("UPTIME_MS", s_cfg.uptime_ms); } break;
             case 0x03: if (l==4) { s_cfg.sync_ms   = rd32be(p); s_cfg.have[H_SYNC_MS]=true; changed=true; log_set_u("SYNC_MS", s_cfg.sync_ms); } break;
-
-            /* Alap kulcsok */
             case 0x10: if(l==2){ s_cfg.network_id = rd16be(p); s_cfg.have[H_NETWORK_ID]=true; changed=true; log_set_u("NETWORK_ID", s_cfg.network_id); } break;
             case 0x11: if(l==2){ s_cfg.zone_id    = rd16be(p); s_cfg.have[H_ZONE_ID]=true;    changed=true; log_set_u("ZONE_ID", s_cfg.zone_id); } break;
             case 0x12: if(l==4){ s_cfg.anchor_id  = rd32be(p); s_cfg.have[H_ANCHOR_ID]=true;   changed=true; ESP_LOGI(TAG,"ANCHOR_ID=0x%08" PRIX32, s_cfg.anchor_id); } break;
@@ -302,7 +256,6 @@ static bool parse_tlvs_and_update(const uint8_t* p, uint16_t n)
             case 0x40: if(l==1){ s_cfg.phy_ch     = p[0];      s_cfg.have[H_PHY_CH]=true;      changed=true; log_set_u("PHY_CH", s_cfg.phy_ch); } break;
             case 0x49: if(l==2){ s_cfg.phy_sfdto  = rd16be(p); s_cfg.have[H_PHY_SFDTO]=true;   changed=true; log_set_u("PHY_SFDTO", s_cfg.phy_sfdto); } break;
 
-            /* SYN* (0x30..0x39) */
             case 0x30: if(l==2){ s_cfg.syn_ppm_max   = rd16be(p); s_cfg.have[H_SYN_PPM_MAX]=true;   changed=true; log_set_u("PPM_MAX", s_cfg.syn_ppm_max); } break;
             case 0x31: if(l==2){ s_cfg.syn_jump_ppm  = rd16be(p); s_cfg.have[H_SYN_JUMP_PPM]=true;  changed=true; log_set_u("JUMP_PPM", s_cfg.syn_jump_ppm); } break;
             case 0x32: if(l==2){ s_cfg.syn_ab_gap_ms = rd16be(p); s_cfg.have[H_SYN_AB_GAP_MS]=true; changed=true; log_set_u("AB_GAP_MS", s_cfg.syn_ab_gap_ms); } break;
@@ -314,7 +267,6 @@ static bool parse_tlvs_and_update(const uint8_t* p, uint16_t n)
             case 0x38: if(l==2){ s_cfg.syn_dttx_max_ms=rd16be(p); s_cfg.have[H_SYN_DTTX_MAX_MS]=true; changed=true; log_set_u("DTTX_MAX_MS", s_cfg.syn_dttx_max_ms); } break;
             case 0x39: if(l==1){ s_cfg.syn_lock_need = p[0];      s_cfg.have[H_SYN_LOCK_NEED]=true;   changed=true; log_set_u("LOCK_NEED", s_cfg.syn_lock_need); } break;
 
-            /* PHY extra (0x41..0x4C) */
             case 0x41: if(l==1){ s_cfg.phy_plen    = p[0]; s_cfg.have[H_PHY_PLEN]=true;    changed=true; log_set_u("PHY_PLEN", s_cfg.phy_plen); } break;
             case 0x42: if(l==1){ s_cfg.phy_pac     = p[0]; s_cfg.have[H_PHY_PAC]=true;     changed=true; log_set_u("PHY_PAC", s_cfg.phy_pac); } break;
             case 0x43: if(l==1){ s_cfg.phy_tx_code = p[0]; s_cfg.have[H_PHY_TX_CODE]=true; changed=true; log_set_u("PHY_TX_CODE", s_cfg.phy_tx_code); } break;
@@ -326,7 +278,6 @@ static bool parse_tlvs_and_update(const uint8_t* p, uint16_t n)
             case 0x4A: if(l==1){ s_cfg.phy_sts_mode= p[0]; s_cfg.have[H_PHY_STS_MODE]=true;changed=true; log_set_u("PHY_STS_MODE", s_cfg.phy_sts_mode); } break;
             case 0x4B: if(l==1){ s_cfg.phy_sts_len = p[0]; s_cfg.have[H_PHY_STS_LEN]=true; changed=true; log_set_u("PHY_STS_LEN", s_cfg.phy_sts_len); } break;
             case 0x4C: if(l==1){ s_cfg.phy_pdoa    = p[0]; s_cfg.have[H_PHY_PDOA]=true;    changed=true; log_set_u("PHY_PDOA", s_cfg.phy_pdoa); } break;
-
             default: break;
         }
         p += l; n -= l;
@@ -334,13 +285,10 @@ static bool parse_tlvs_and_update(const uint8_t* p, uint16_t n)
     return changed;
 }
 
-/* ====== BLE notify callback → csak sorba tesz ====== */
 static void on_ble_notify(const uint8_t* p, uint16_t n, bool from_cfg)
 {
     if (!p || n == 0) return;
-    // ESP_LOGI(TAG, "notify: len=%u, from_cfg=%d, op=0x%02x", n, from_cfg, n>=2?p[1]:0);
 
-    /* SET-ACK (külön jelzés) */
     if (n == 6 && p[0] == 1 && p[1] == 0x81) {
         if (s_sem_ack) xSemaphoreGive(s_sem_ack);
         return;
@@ -350,7 +298,6 @@ static void on_ble_notify(const uint8_t* p, uint16_t n, bool from_cfg)
 
     bool is_tlv = (n >= 2 && (p[1] == OP_START || p[1] == OP_LINE || p[1] == OP_DONE));
 
-    // Ha nem TLV keret, próbáljuk "HB:" sor logként értelmezni
     if (!is_tlv) {
         try_parse_hb_line(p, n);
     }
@@ -366,14 +313,12 @@ static void on_ble_notify(const uint8_t* p, uint16_t n, bool from_cfg)
     f->from_cfg = from_cfg;
     memcpy(f->data, p, n);
 
-    /* Próbáljuk berakni a queue-ba. Ha sikertelen, szabadítsuk a memóriát. */
     if (xQueueSend(s_q, &f, pdMS_TO_TICKS(50)) != pdTRUE) {
         vPortFree(f);
         ESP_LOGW(TAG, "queue full, dropped TLV");
         return;
     }
 
-    /* Ha TLV START/LINE/DONE, akkor csak azután jelezzünk, hogy bent van a queue. */
     if (is_tlv && (op == OP_START || op == OP_LINE || op == OP_DONE)) {
         if (s_sem_tlv) xSemaphoreGive(s_sem_tlv);
     }
@@ -381,19 +326,16 @@ static void on_ble_notify(const uint8_t* p, uint16_t n, bool from_cfg)
         s_cfg_done = true;
         if (s_sem_tlv) xSemaphoreGive(s_sem_tlv);
     }
-
 }
 
-/* ====== Feldolgozó task ====== */
 static void tlv_worker_task(void* arg)
 {
     frame_t* f=NULL;
     for(;;){
         if(xQueueReceive(s_q,&f,portMAX_DELAY)!=pdTRUE) continue;
         if(!f) continue;
-        // ESP_LOGI(TAG, "worker: frame len=%u, op=0x%02x", f->len, f->len>=2?f->data[1]:0);
 
-        if (/*f->from_cfg &&*/ f->len >= 2) {
+        if (f->len >= 2) {
             uint8_t op = f->data[1];
             if (op == OP_START) {
                 s_last_line_tick = xTaskGetTickCount();
@@ -402,17 +344,14 @@ static void tlv_worker_task(void* arg)
                 uint16_t tlv_len = (uint16_t)(f->len - 6);
                 (void)parse_tlvs_and_update(tlv, tlv_len);
                 s_last_line_tick = xTaskGetTickCount();
-                /* korábban itt volt xSemaphoreGive(s_sem_tlv); — eltávolítva */
             } else if (op == OP_DONE) {
                 s_cfg_done = true;
-                /* korábban itt volt xSemaphoreGive(s_sem_tlv); — eltávolítva */
             }
         }
         vPortFree(f);
     }
 }
 
-/* ====== Sor kiürítése egy új kérés előtt ====== */
 static void drain_queue(void){
     frame_t* f=NULL;
     while(xQueueReceive(s_q, &f, 0)==pdTRUE){
@@ -475,7 +414,6 @@ static esp_err_t handle_dwm_set(httpd_req_t *req)
     return ESP_OK;
 }
 
-/* ====== HTTP handler: /api/dwm_get ====== */
 static esp_err_t dwm_get_handler(httpd_req_t* req)
 {
     if(!s_ble_lock) s_ble_lock = xSemaphoreCreateMutex();
@@ -485,7 +423,7 @@ static esp_err_t dwm_get_handler(httpd_req_t* req)
 
     reset_cfg();
     drain_queue();
-    xSemaphoreTake(s_sem_tlv, 0);   // ürítés
+    xSemaphoreTake(s_sem_tlv, 0);
     s_cfg_done=false;
     s_last_line_tick = xTaskGetTickCount();
 
@@ -498,7 +436,6 @@ static esp_err_t dwm_get_handler(httpd_req_t* req)
         return ESP_FAIL;
     }
 
-    // első TLV / DONE megvárása (max 60 s)
     if(xSemaphoreTake(s_sem_tlv, pdMS_TO_TICKS(60000)) != pdTRUE){
         httpd_resp_set_status(req, "504 Gateway Timeout");
         httpd_resp_sendstr(req, "");
@@ -506,7 +443,6 @@ static esp_err_t dwm_get_handler(httpd_req_t* req)
         return ESP_FAIL;
     }
 
-    // gyűjtés DONE-ig vagy 500 ms tétlenségig (de max +60s)
     TickType_t t0 = xTaskGetTickCount();
     const TickType_t HARD_CAP = pdMS_TO_TICKS(60000);
     const TickType_t IDLE_GAP = pdMS_TO_TICKS(500);
@@ -519,7 +455,6 @@ static esp_err_t dwm_get_handler(httpd_req_t* req)
         (void)xSemaphoreTake(s_sem_tlv, pdMS_TO_TICKS(200));
     }
 
-    /* JSON válasz */
     cJSON* j = cJSON_CreateObject();
     build_cfg_json(j);
 
@@ -533,8 +468,6 @@ static esp_err_t dwm_get_handler(httpd_req_t* req)
     return ESP_OK;
 }
 
-/* ====== HTTP handler: /api/dwm_last ====== */
-/* Csak a RAM-ban lévő utolsó s_cfg tartalmat adja vissza, BLE GET nélkül. */
 static esp_err_t dwm_last_handler(httpd_req_t* req)
 {
     if(!s_ble_lock) s_ble_lock = xSemaphoreCreateMutex();
@@ -553,6 +486,204 @@ static esp_err_t dwm_last_handler(httpd_req_t* req)
     return ESP_OK;
 }
 
+/* ===== Wi-Fi config HTTP ===== */
+
+static void json_add_string(cJSON *obj, const char *key, const char *value)
+{
+    cJSON_AddStringToObject(obj, key, value ? value : "");
+}
+
+static void json_copy_string(cJSON *obj, const char *key, char *out, size_t out_sz)
+{
+    const cJSON *item = cJSON_GetObjectItemCaseSensitive(obj, key);
+    if (!cJSON_IsString(item) || !item->valuestring || out_sz == 0) return;
+    strncpy(out, item->valuestring, out_sz - 1);
+    out[out_sz - 1] = 0;
+}
+
+static void json_copy_u8(cJSON *obj, const char *key, uint8_t *out)
+{
+    const cJSON *item = cJSON_GetObjectItemCaseSensitive(obj, key);
+    if (cJSON_IsBool(item)) {
+        *out = cJSON_IsTrue(item) ? 1 : 0;
+    } else if (cJSON_IsNumber(item)) {
+        *out = (item->valueint != 0) ? 1 : 0;
+    }
+}
+
+static esp_err_t wifi_config_get_handler(httpd_req_t *req)
+{
+    const wifi_manager_config_t *cfg = wifi_manager_get_config();
+    cJSON *j = cJSON_CreateObject();
+
+    cJSON_AddBoolToObject(j, "enabled", cfg->enabled != 0);
+    cJSON_AddBoolToObject(j, "dhcp", cfg->dhcp != 0);
+    json_add_string(j, "ssid", cfg->ssid);
+    json_add_string(j, "password", "");
+    cJSON_AddBoolToObject(j, "password_set", cfg->password[0] != 0);
+    json_add_string(j, "ip", cfg->ip);
+    json_add_string(j, "mask", cfg->mask);
+    json_add_string(j, "gw", cfg->gw);
+    json_add_string(j, "dns1", cfg->dns1);
+    json_add_string(j, "dns2", cfg->dns2);
+
+    char *out = cJSON_PrintUnformatted(j);
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_sendstr(req, out ? out : "{}");
+
+    if (out) free(out);
+    cJSON_Delete(j);
+    return ESP_OK;
+}
+
+static esp_err_t wifi_config_post_handler(httpd_req_t *req)
+{
+    int len = req->content_len;
+    if (len <= 0) {
+        httpd_resp_set_status(req, "400 Bad Request");
+        httpd_resp_sendstr(req, "empty body");
+        return ESP_OK;
+    }
+
+    char *buf = malloc(len + 1);
+    if (!buf) {
+        httpd_resp_set_status(req, "500 Internal Server Error");
+        httpd_resp_sendstr(req, "no mem");
+        return ESP_OK;
+    }
+
+    int off = 0;
+    while (off < len) {
+        int r = httpd_req_recv(req, buf + off, len - off);
+        if (r <= 0) {
+            free(buf);
+            httpd_resp_set_status(req, "500 Internal Server Error");
+            httpd_resp_sendstr(req, "recv error");
+            return ESP_OK;
+        }
+        off += r;
+    }
+    buf[off] = 0;
+
+    cJSON *root = cJSON_Parse(buf);
+    free(buf);
+
+    if (!root) {
+        httpd_resp_set_status(req, "400 Bad Request");
+        httpd_resp_sendstr(req, "invalid json");
+        return ESP_OK;
+    }
+
+    wifi_manager_config_t next = *wifi_manager_get_config();
+    json_copy_u8(root, "enabled", &next.enabled);
+    json_copy_u8(root, "dhcp", &next.dhcp);
+    json_copy_string(root, "ssid", next.ssid, sizeof(next.ssid));
+    json_copy_string(root, "password", next.password, sizeof(next.password));
+    json_copy_string(root, "ip", next.ip, sizeof(next.ip));
+    json_copy_string(root, "mask", next.mask, sizeof(next.mask));
+    json_copy_string(root, "gw", next.gw, sizeof(next.gw));
+    json_copy_string(root, "dns1", next.dns1, sizeof(next.dns1));
+    json_copy_string(root, "dns2", next.dns2, sizeof(next.dns2));
+
+    cJSON_Delete(root);
+
+    esp_err_t er = wifi_manager_set_config(&next, true);
+    if (er != ESP_OK) {
+        httpd_resp_set_status(req, "500 Internal Server Error");
+        httpd_resp_sendstr(req, "save failed");
+        return ESP_OK;
+    }
+
+    if (!next.enabled || next.ssid[0] == 0) {
+        wifi_manager_stop();
+    } else if (!(ethernet_is_link_up() || ethernet_has_ip())) {
+        wifi_manager_start();
+    }
+
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_sendstr(req, "{\"ok\":true}");
+    return ESP_OK;
+}
+
+static esp_err_t uplink_status_handler(httpd_req_t *req)
+{
+    cJSON *j = cJSON_CreateObject();
+
+    bool eth_link = ethernet_is_link_up();
+    bool eth_ip   = ethernet_has_ip();
+    bool wifi_started = wifi_manager_is_started();
+    bool wifi_conn    = wifi_manager_is_connected();
+    bool wifi_ip      = wifi_manager_has_ip();
+
+    cJSON_AddBoolToObject(j, "eth_link", eth_link);
+    cJSON_AddBoolToObject(j, "eth_ip", eth_ip);
+    cJSON_AddBoolToObject(j, "wifi_started", wifi_started);
+    cJSON_AddBoolToObject(j, "wifi_connected", wifi_conn);
+    cJSON_AddBoolToObject(j, "wifi_ip", wifi_ip);
+    json_add_string(j, "wifi_addr", wifi_manager_get_ip_str());
+
+    if (eth_link || eth_ip) {
+        cJSON_AddStringToObject(j, "active_uplink", "ethernet");
+    } else if (wifi_started || wifi_conn || wifi_ip) {
+        cJSON_AddStringToObject(j, "active_uplink", "wifi");
+    } else {
+        cJSON_AddStringToObject(j, "active_uplink", "none");
+    }
+
+    char *out = cJSON_PrintUnformatted(j);
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_sendstr(req, out ? out : "{}");
+
+    if (out) free(out);
+    cJSON_Delete(j);
+    return ESP_OK;
+}
+
+static esp_err_t wifi_page_handler(httpd_req_t *req)
+{
+    static const char *HTML =
+        "<!doctype html><html><head><meta charset='utf-8'>"
+        "<meta name='viewport' content='width=device-width,initial-scale=1'>"
+        "<title>Wi-Fi config</title>"
+        "<style>body{font-family:sans-serif;max-width:760px;margin:24px auto;padding:0 12px}"
+        "label{display:block;margin:10px 0 4px}input[type=text],input[type=password]{width:100%;padding:8px}"
+        ".row{display:grid;grid-template-columns:1fr 1fr;gap:12px}.muted{color:#666;font-size:13px}"
+        "button{margin-top:16px;padding:10px 16px}</style></head><body>"
+        "<h1>Wi-Fi beállítás</h1>"
+        "<p class='muted'>Ethernet link esetén a Wi-Fi automatikusan leáll, Ethernet hiányában fallbackként indul.</p>"
+        "<div id='status' class='muted'>Betöltés...</div>"
+        "<label><input id='enabled' type='checkbox'> Wi-Fi engedélyezve</label>"
+        "<label><input id='dhcp' type='checkbox'> DHCP</label>"
+        "<label>SSID</label><input id='ssid' type='text'>"
+        "<label>Jelszó</label><input id='password' type='password' placeholder='Üresen hagyva marad a mentett'>"
+        "<div class='row'>"
+        "<div><label>IP</label><input id='ip' type='text'></div>"
+        "<div><label>Maszk</label><input id='mask' type='text'></div>"
+        "<div><label>Gateway</label><input id='gw' type='text'></div>"
+        "<div><label>DNS1</label><input id='dns1' type='text'></div>"
+        "<div><label>DNS2</label><input id='dns2' type='text'></div>"
+        "</div>"
+        "<button onclick='saveCfg()'>Mentés</button>"
+        "<script>"
+        "async function refresh(){"
+        " const s=await fetch('/api/uplink_status').then(r=>r.json());"
+        " const c=await fetch('/api/wifi_config').then(r=>r.json());"
+        " document.getElementById('status').textContent='Aktív uplink: '+s.active_uplink+' | Wi-Fi IP: '+(s.wifi_addr||'-');"
+        " enabled.checked=!!c.enabled; dhcp.checked=!!c.dhcp; ssid.value=c.ssid||'';"
+        " ip.value=c.ip||''; mask.value=c.mask||''; gw.value=c.gw||''; dns1.value=c.dns1||''; dns2.value=c.dns2||'';"
+        "}"
+        "async function saveCfg(){"
+        " const body={enabled:enabled.checked,dhcp:dhcp.checked,ssid:ssid.value,password:password.value,ip:ip.value,mask:mask.value,gw:gw.value,dns1:dns1.value,dns2:dns2.value};"
+        " const r=await fetch('/api/wifi_config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});"
+        " if(!r.ok){alert('Mentés sikertelen');return;} password.value=''; await refresh(); alert('Mentve');"
+        "}"
+        "refresh(); setInterval(refresh,3000);"
+        "</script></body></html>";
+
+    httpd_resp_set_type(req, "text/html");
+    httpd_resp_send(req, HTML, HTTPD_RESP_USE_STRLEN);
+    return ESP_OK;
+}
 
 /* ====== HTTP route regisztrálás ====== */
 
@@ -577,18 +708,47 @@ static const httpd_uri_t uri_dwm_last = {
     .user_ctx = NULL
 };
 
+static const httpd_uri_t uri_wifi_cfg_get = {
+    .uri      = "/api/wifi_config",
+    .method   = HTTP_GET,
+    .handler  = wifi_config_get_handler,
+    .user_ctx = NULL
+};
+
+static const httpd_uri_t uri_wifi_cfg_post = {
+    .uri      = "/api/wifi_config",
+    .method   = HTTP_POST,
+    .handler  = wifi_config_post_handler,
+    .user_ctx = NULL
+};
+
+static const httpd_uri_t uri_uplink_status = {
+    .uri      = "/api/uplink_status",
+    .method   = HTTP_GET,
+    .handler  = uplink_status_handler,
+    .user_ctx = NULL
+};
+
+static const httpd_uri_t uri_wifi_page = {
+    .uri      = "/wifi.html",
+    .method   = HTTP_GET,
+    .handler  = wifi_page_handler,
+    .user_ctx = NULL
+};
+
 void http_register_routes(httpd_handle_t h)
 {
     httpd_register_uri_handler(h, &uri_dwm_get);
     httpd_register_uri_handler(h, &uri_dwm_set);
-    httpd_register_uri_handler(h, &uri_dwm_last);   // ÚJ
+    httpd_register_uri_handler(h, &uri_dwm_last);
+    httpd_register_uri_handler(h, &uri_wifi_cfg_get);
+    httpd_register_uri_handler(h, &uri_wifi_cfg_post);
+    httpd_register_uri_handler(h, &uri_uplink_status);
+    httpd_register_uri_handler(h, &uri_wifi_page);
 }
 
-/* ====== Init: sor, szemaforok, callback, worker ====== */
 void ble_http_bridge_init(void)
 {
-    // ESP_LOGI(TAG, "ble_http_bridge_init()");
-
     if(!s_q){
         s_q = xQueueCreate(8, sizeof(frame_t*));
     }
@@ -598,15 +758,12 @@ void ble_http_bridge_init(void)
     if(!s_worker){
         xTaskCreatePinnedToCore(tlv_worker_task, "tlv_worker", 3072, NULL, 5, &s_worker, tskNO_AFFINITY);
     }
-    /* csak egyszer regisztráljuk */
     static bool cb_reg = false;
     if(!cb_reg){
         ble_register_notify_cb(on_ble_notify);
         cb_reg = true;
     }
 }
-
-// ===== HB státusz getterek a webserver.cpp-nek =====
 
 uint8_t hb_get_status(void)
 {
