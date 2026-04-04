@@ -183,7 +183,6 @@ const wifi_manager_config_t* wifi_manager_get_config(void)
     return &s_cfg;
 }
 
-
 esp_err_t wifi_manager_set_config(const wifi_manager_config_t *cfg, bool keep_password_if_empty)
 {
     if (!cfg) return ESP_ERR_INVALID_ARG;
