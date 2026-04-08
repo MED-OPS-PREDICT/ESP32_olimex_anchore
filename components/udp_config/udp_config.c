@@ -118,10 +118,16 @@ static struct {
 
 static QueueHandle_t s_dwm_q = NULL;
 static TaskHandle_t s_dwm_worker = NULL;
+static TaskHandle_t s_dwm_refresh_task_handle = NULL;
 static SemaphoreHandle_t s_dwm_sem = NULL;
 static SemaphoreHandle_t s_dwm_lock = NULL;
+static SemaphoreHandle_t s_dwm_refresh_sem = NULL;
 static volatile bool s_dwm_cfg_done = false;
+static volatile bool s_dwm_refresh_in_progress = false;
+static volatile bool s_dwm_first_line_seen = false;
 static volatile TickType_t s_dwm_last_line_tick = 0;
+static TickType_t s_dwm_last_refresh_tick = 0;
+static bool s_dwm_have_snapshot = false;
 static uint16_t s_dwm_req_id = 0;
 static uint16_t s_dwm_active_req_id = 0;
 static uint8_t s_tlv_section = 1;
@@ -161,6 +167,25 @@ static void reset_dwm_cfg(void)
 {
     memset(&s_dwm_cfg, 0, sizeof(s_dwm_cfg));
     s_tlv_section = 1;
+}
+
+
+static bool dwm_has_any_data(void)
+{
+    for (size_t i = 0; i < H__COUNT; ++i) {
+        if (s_dwm_cfg.have[i]) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static void dwm_request_refresh(bool force)
+{
+    if (!s_dwm_refresh_sem) return;
+    if (force || !s_dwm_refresh_in_progress) {
+        (void)xSemaphoreGive(s_dwm_refresh_sem);
+    }
 }
 
 static void drain_dwm_queue(void)
@@ -687,20 +712,35 @@ static void dwm_worker_task(void *arg)
             if (op == OP_START && f->len >= 6) {
                 uint16_t req_id = rd16be(&f->data[2]);
                 if (req_id == s_dwm_active_req_id) {
-                    s_dwm_last_line_tick = xTaskGetTickCount();
+                    if (s_dwm_lock && xSemaphoreTake(s_dwm_lock, pdMS_TO_TICKS(1000)) == pdTRUE) {
+                        s_tlv_section = 1;
+                        s_dwm_last_line_tick = xTaskGetTickCount();
+                        xSemaphoreGive(s_dwm_lock);
+                    }
                     if (s_dwm_sem) xSemaphoreGive(s_dwm_sem);
                 }
             } else if (op == OP_LINE && f->len >= 6) {
                 uint16_t req_id = rd16be(&f->data[2]);
                 if (req_id == s_dwm_active_req_id) {
-                    (void)parse_tlvs_and_update(f->data + 6, (uint16_t)(f->len - 6));
-                    s_dwm_last_line_tick = xTaskGetTickCount();
+                    if (s_dwm_lock && xSemaphoreTake(s_dwm_lock, pdMS_TO_TICKS(1000)) == pdTRUE) {
+                        (void)parse_tlvs_and_update(f->data + 6, (uint16_t)(f->len - 6));
+                        s_dwm_last_line_tick = xTaskGetTickCount();
+                        s_dwm_last_refresh_tick = s_dwm_last_line_tick;
+                        s_dwm_first_line_seen = true;
+                        s_dwm_have_snapshot = dwm_has_any_data();
+                        xSemaphoreGive(s_dwm_lock);
+                    }
                     if (s_dwm_sem) xSemaphoreGive(s_dwm_sem);
                 }
             } else if (op == OP_DONE && f->len >= 4) {
                 uint16_t req_id = rd16be(&f->data[2]);
                 if (req_id == s_dwm_active_req_id) {
-                    s_dwm_cfg_done = true;
+                    if (s_dwm_lock && xSemaphoreTake(s_dwm_lock, pdMS_TO_TICKS(1000)) == pdTRUE) {
+                        s_dwm_cfg_done = true;
+                        s_dwm_refresh_in_progress = false;
+                        s_dwm_last_refresh_tick = xTaskGetTickCount();
+                        xSemaphoreGive(s_dwm_lock);
+                    }
                     if (s_dwm_sem) xSemaphoreGive(s_dwm_sem);
                 }
             }
@@ -735,44 +775,100 @@ void udp_config_on_ble_notify(const uint8_t *data, uint16_t len, bool from_cfg)
     }
 }
 
+static void dwm_refresh_task(void *arg)
+{
+    (void)arg;
+    const TickType_t periodic_refresh = pdMS_TO_TICKS(60000);
+    const TickType_t hard_cap = pdMS_TO_TICKS(150000);
+    const TickType_t idle_gap = pdMS_TO_TICKS(10000);
+
+    for (;;) {
+        (void)xSemaphoreTake(s_dwm_refresh_sem, periodic_refresh);
+
+        if (!s_dwm_lock) {
+            continue;
+        }
+        if (xSemaphoreTake(s_dwm_lock, pdMS_TO_TICKS(2000)) != pdTRUE) {
+            continue;
+        }
+
+        bool should_start = !s_dwm_refresh_in_progress;
+        if (should_start) {
+            if (s_dwm_sem) {
+                xSemaphoreTake(s_dwm_sem, 0);
+            }
+            drain_dwm_queue();
+            s_dwm_cfg_done = false;
+            s_dwm_first_line_seen = false;
+            s_tlv_section = 1;
+            s_dwm_active_req_id = ++s_dwm_req_id;
+            s_dwm_refresh_in_progress = true;
+            s_dwm_last_line_tick = xTaskGetTickCount();
+        }
+        xSemaphoreGive(s_dwm_lock);
+
+        if (!should_start) {
+            continue;
+        }
+
+        esp_err_t err = ble_send_get(s_dwm_active_req_id);
+        if (err != ESP_OK) {
+            if (xSemaphoreTake(s_dwm_lock, pdMS_TO_TICKS(1000)) == pdTRUE) {
+                s_dwm_refresh_in_progress = false;
+                xSemaphoreGive(s_dwm_lock);
+            }
+            ESP_LOGW(TAG, "background DWM refresh failed: %s", esp_err_to_name(err));
+            continue;
+        }
+
+        TickType_t start = xTaskGetTickCount();
+        for (;;) {
+            if (s_dwm_sem) {
+                (void)xSemaphoreTake(s_dwm_sem, pdMS_TO_TICKS(1000));
+            } else {
+                vTaskDelay(pdMS_TO_TICKS(1000));
+            }
+
+            if (xSemaphoreTake(s_dwm_lock, pdMS_TO_TICKS(1000)) != pdTRUE) {
+                continue;
+            }
+
+            TickType_t now = xTaskGetTickCount();
+            bool done = s_dwm_cfg_done;
+            bool first_line = s_dwm_first_line_seen;
+            bool timeout = (now - start) > hard_cap;
+            bool idle = first_line && ((now - s_dwm_last_line_tick) > idle_gap);
+
+            if (done || timeout || idle) {
+                s_dwm_cfg_done = false;
+                s_dwm_refresh_in_progress = false;
+                xSemaphoreGive(s_dwm_lock);
+                break;
+            }
+
+            xSemaphoreGive(s_dwm_lock);
+        }
+    }
+}
+
 static esp_err_t dwm_get_snapshot_json(char *out, size_t out_sz)
 {
     if (!out || out_sz == 0) return ESP_ERR_INVALID_ARG;
     if (!s_dwm_lock) return ESP_ERR_INVALID_STATE;
 
-    if (xSemaphoreTake(s_dwm_lock, pdMS_TO_TICKS(1000)) != pdTRUE) {
+    TickType_t now = xTaskGetTickCount();
+    if (!s_dwm_have_snapshot || !s_dwm_refresh_in_progress || ((now - s_dwm_last_refresh_tick) > pdMS_TO_TICKS(30000))) {
+        dwm_request_refresh(!s_dwm_have_snapshot);
+    }
+
+    if (!s_dwm_have_snapshot && s_dwm_sem) {
+        for (int i = 0; i < 5 && !s_dwm_have_snapshot; ++i) {
+            (void)xSemaphoreTake(s_dwm_sem, pdMS_TO_TICKS(1000));
+        }
+    }
+
+    if (xSemaphoreTake(s_dwm_lock, pdMS_TO_TICKS(1500)) != pdTRUE) {
         return ESP_ERR_TIMEOUT;
-    }
-
-    if (s_dwm_sem) {
-        xSemaphoreTake(s_dwm_sem, 0);
-    }
-    drain_dwm_queue();
-    reset_dwm_cfg();
-    s_dwm_cfg_done = false;
-    s_dwm_last_line_tick = xTaskGetTickCount();
-    s_dwm_active_req_id = ++s_dwm_req_id;
-
-    esp_err_t err = ble_send_get(s_dwm_active_req_id);
-    if (err != ESP_OK) {
-        xSemaphoreGive(s_dwm_lock);
-        return err;
-    }
-
-    if (!s_dwm_sem || xSemaphoreTake(s_dwm_sem, pdMS_TO_TICKS(3000)) != pdTRUE) {
-        xSemaphoreGive(s_dwm_lock);
-        return ESP_ERR_TIMEOUT;
-    }
-
-    TickType_t start = xTaskGetTickCount();
-    const TickType_t hard_cap = pdMS_TO_TICKS(5000);
-    const TickType_t idle_gap = pdMS_TO_TICKS(400);
-
-    while (!s_dwm_cfg_done) {
-        TickType_t now = xTaskGetTickCount();
-        if ((now - start) > hard_cap) break;
-        if ((now - s_dwm_last_line_tick) > idle_gap) break;
-        (void)xSemaphoreTake(s_dwm_sem, pdMS_TO_TICKS(200));
     }
 
     cJSON *obj = cJSON_CreateObject();
@@ -783,6 +879,9 @@ static esp_err_t dwm_get_snapshot_json(char *out, size_t out_sz)
     }
 
     build_dwm_json(obj);
+    if (s_dwm_refresh_in_progress) {
+        cJSON_AddBoolToObject(obj, "_refreshing", true);
+    }
     printed = cJSON_PrintUnformatted(obj);
     cJSON_Delete(obj);
 
@@ -800,7 +899,7 @@ static esp_err_t dwm_get_snapshot_json(char *out, size_t out_sz)
     strcpy(out, printed);
     free(printed);
     xSemaphoreGive(s_dwm_lock);
-    return ESP_OK;
+    return s_dwm_have_snapshot ? ESP_OK : ESP_ERR_TIMEOUT;
 }
 
 static esp_err_t dwm_set_from_json_obj(const cJSON *dwm_obj)
@@ -812,6 +911,10 @@ static esp_err_t dwm_set_from_json_obj(const cJSON *dwm_obj)
 
     esp_err_t err = uwb_cfg_cli_set_from_json(dup, ++s_dwm_req_id);
     cJSON_Delete(dup);
+
+    if (err == ESP_OK) {
+        dwm_request_refresh(true);
+    }
     return err;
 }
 
@@ -867,6 +970,10 @@ static esp_err_t handle_get_command(const char *target, char *out, size_t out_sz
     if (!target || strcmp(target, "all") == 0 || strcmp(target, "system") == 0 || strcmp(target, "ble") == 0 || strcmp(target, "wifi") == 0) {
         err = add_full_system_snapshot(resp);
         if (err != ESP_OK) goto done;
+    }
+
+    if ((target && strcmp(target, "dwm") == 0) || (!target || strcmp(target, "all") == 0)) {
+        dwm_request_refresh(false);
     }
 
     if (target && strcmp(target, "dwm") == 0) {
@@ -1082,13 +1189,20 @@ esp_err_t udp_config_server_start(void)
     if (!s_dwm_q) s_dwm_q = xQueueCreate(8, sizeof(frame_t *));
     if (!s_dwm_sem) s_dwm_sem = xSemaphoreCreateBinary();
     if (!s_dwm_lock) s_dwm_lock = xSemaphoreCreateMutex();
+    if (!s_dwm_refresh_sem) s_dwm_refresh_sem = xSemaphoreCreateBinary();
 
-    if (!s_dwm_q || !s_dwm_sem || !s_dwm_lock) {
+    if (!s_dwm_q || !s_dwm_sem || !s_dwm_lock || !s_dwm_refresh_sem) {
         return ESP_ERR_NO_MEM;
     }
 
     if (!s_dwm_worker) {
         if (xTaskCreatePinnedToCore(dwm_worker_task, "udp_dwm_worker", 4096, NULL, 5, &s_dwm_worker, tskNO_AFFINITY) != pdPASS) {
+            return ESP_ERR_NO_MEM;
+        }
+    }
+
+    if (!s_dwm_refresh_task_handle) {
+        if (xTaskCreatePinnedToCore(dwm_refresh_task, "udp_dwm_refresh", 4096, NULL, 5, &s_dwm_refresh_task_handle, tskNO_AFFINITY) != pdPASS) {
             return ESP_ERR_NO_MEM;
         }
     }
@@ -1099,5 +1213,6 @@ esp_err_t udp_config_server_start(void)
     }
 
     s_udp_task_started = true;
+    dwm_request_refresh(true);
     return ESP_OK;
 }
