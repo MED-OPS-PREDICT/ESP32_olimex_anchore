@@ -36,6 +36,8 @@ static const uint16_t UDP_CONFIG_DEFAULT_PORT = 12345;
 static const char *NVS_NS = "cfg";
 static const char *NVS_KEY = "esp_cfg";
 static const char *NVS_KEY_BLE = "ble_cfg";
+static const char *NVS_SECURE_NS = "secure";
+static const char *NVS_KEY_MGMT_TOKEN = "mgmt_token";
 
 /* --- kompatibilis másolat a webserver.cpp EspCfg struktúrájáról --- */
 typedef struct {
@@ -119,6 +121,7 @@ static struct {
 static QueueHandle_t s_dwm_q = NULL;
 static TaskHandle_t s_dwm_worker = NULL;
 static TaskHandle_t s_dwm_refresh_task_handle = NULL;
+static TaskHandle_t s_hb_task_handle = NULL;
 static SemaphoreHandle_t s_dwm_sem = NULL;
 static SemaphoreHandle_t s_dwm_lock = NULL;
 static SemaphoreHandle_t s_dwm_refresh_sem = NULL;
@@ -162,6 +165,68 @@ static void apply_ip4_from_str(const char *src, ip4_addr_t *dst)
     if (!src || !dst) return;
     ip4addr_aton(src, dst);
 }
+
+static const cJSON *obj_get(const cJSON *obj, const char *key);
+
+static bool const_time_str_equal(const char *a, const char *b)
+{
+    size_t la = a ? strlen(a) : 0;
+    size_t lb = b ? strlen(b) : 0;
+    size_t n = (la > lb) ? la : lb;
+    unsigned char diff = (unsigned char)(la ^ lb);
+
+    for (size_t i = 0; i < n; ++i) {
+        unsigned char ca = (a && i < la) ? (unsigned char)a[i] : 0U;
+        unsigned char cb = (b && i < lb) ? (unsigned char)b[i] : 0U;
+        diff |= (unsigned char)(ca ^ cb);
+    }
+
+    return diff == 0;
+}
+
+static esp_err_t load_udp_auth_secret(char *out, size_t out_sz)
+{
+    if (!out || out_sz == 0) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    out[0] = 0;
+
+    nvs_handle_t h;
+    if (nvs_open(NVS_SECURE_NS, NVS_READONLY, &h) == ESP_OK) {
+        size_t len = out_sz;
+        esp_err_t err = nvs_get_str(h, NVS_KEY_MGMT_TOKEN, out, &len);
+        nvs_close(h);
+        if (err == ESP_OK && out[0] != 0) {
+            return ESP_OK;
+        }
+    }
+
+    if (key_storage_load(out) && out[0] != 0) {
+        return ESP_OK;
+    }
+
+    out[0] = 0;
+    return ESP_ERR_NOT_FOUND;
+}
+
+static esp_err_t validate_udp_auth(const cJSON *root)
+{
+    const cJSON *auth_item = obj_get(root, "auth");
+    char expected[128] = {0};
+
+    if (!cJSON_IsString(auth_item) || !auth_item->valuestring || auth_item->valuestring[0] == 0) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    esp_err_t err = load_udp_auth_secret(expected, sizeof(expected));
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    return const_time_str_equal(auth_item->valuestring, expected) ? ESP_OK : ESP_ERR_INVALID_CRC;
+}
+
 
 static void reset_dwm_cfg(void)
 {
@@ -268,6 +333,9 @@ static void sync_cfg_from_runtime(persisted_cfg_t *cfg)
     if (!cfg) return;
 
     cfg->GW_ID = IPS.gw_id;
+    if (IPS.hb_ms > 0) {
+        cfg->HB_MS = (uint16_t)IPS.hb_ms;
+    }
 
     ip4_to_cstr(&NET.ip, cfg->ETH_IP, sizeof(cfg->ETH_IP));
     ip4_to_cstr(&NET.mask, cfg->ETH_MASK, sizeof(cfg->ETH_MASK));
@@ -304,6 +372,9 @@ static void apply_runtime_from_cfg(const persisted_cfg_t *cfg)
     apply_ip4_from_str(cfg->ETH_GW, &NET.gw);
 
     IPS.gw_id = cfg->GW_ID;
+    if (cfg->HB_MS > 0) {
+        IPS.hb_ms = cfg->HB_MS;
+    }
 
     apply_ip4_from_str(cfg->ZONE_CTRL_IP, &IPS.dest[0].dest_ip);
     IPS.dest[0].dest_port = cfg->ZONE_CTRL_PORT;
@@ -323,6 +394,74 @@ static void apply_runtime_from_cfg(const persisted_cfg_t *cfg)
     }
 
     ethernet_reapply_ip_from_net();
+}
+
+static bool any_telemetry_dest_enabled(void)
+{
+    for (int i = 0; i < 3; ++i) {
+        if (IPS.dest[i].enabled && IPS.dest[i].dest_port != 0 && IPS.dest[i].dest_ip.addr != 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static void build_periodic_hb_line(char *out, size_t out_sz)
+{
+    if (!out || out_sz == 0) return;
+
+    uint16_t zone_id = esp_cfg_get_zone_id();
+    snprintf(out, out_sz,
+             "HB: HB status=%" PRIu8 " uptime=%" PRIu32 " ms sync_ms=%" PRIu32 " zone_id=0x%04X",
+             (uint8_t)g_hb_status,
+             (uint32_t)g_hb_uptime,
+             (uint32_t)g_hb_sync_ms,
+             (unsigned)zone_id);
+}
+
+static void restore_telemetry_runtime(void)
+{
+    aes_sender_init();
+
+    persisted_cfg_t cfg;
+    memset(&cfg, 0, sizeof(cfg));
+
+    if (load_cfg_from_nvs(&cfg)) {
+        apply_runtime_from_cfg(&cfg);
+        ESP_LOGI(TAG, "telemetry runtime restored from persisted config");
+        return;
+    }
+
+    char key_buf[65] = {0};
+    if (key_storage_load(key_buf) && key_buf[0] != 0) {
+        aes_sender_set_key_hex(key_buf);
+        ESP_LOGI(TAG, "telemetry AES key restored from key storage");
+    }
+}
+
+static void telemetry_hb_task(void *arg)
+{
+    (void)arg;
+
+    TickType_t last_wake = xTaskGetTickCount();
+    for (;;) {
+        uint32_t hb_ms = IPS.hb_ms;
+        if (hb_ms == 0) {
+            vTaskDelay(pdMS_TO_TICKS(1000));
+            last_wake = xTaskGetTickCount();
+            continue;
+        }
+
+        vTaskDelayUntil(&last_wake, pdMS_TO_TICKS(hb_ms));
+
+        if (!any_telemetry_dest_enabled()) {
+            continue;
+        }
+
+        char line[160];
+        build_periodic_hb_line(line, sizeof(line));
+        aes_sender_send_line(line);
+    }
 }
 
 static const cJSON *obj_get(const cJSON *obj, const char *key)
@@ -411,6 +550,7 @@ static cJSON *build_system_json_obj(void)
     if (!obj) return NULL;
 
     cJSON_AddNumberToObject(obj, "GW_ID", (double)cfg.GW_ID);
+    cJSON_AddNumberToObject(obj, "HB_MS", (double)cfg.HB_MS);
     cJSON_AddNumberToObject(obj, "ETH_MODE", cfg.ETH_MODE);
     add_string_or_empty(obj, "ETH_IP", cfg.ETH_IP);
     add_string_or_empty(obj, "ETH_MASK", cfg.ETH_MASK);
@@ -428,7 +568,7 @@ static cJSON *build_system_json_obj(void)
     cJSON_AddNumberToObject(obj, "SERVICE_PORT", cfg.SERVICE_PORT);
     cJSON_AddNumberToObject(obj, "SERVICE_EN", cfg.SERVICE_EN);
 
-    add_string_or_empty(obj, "AES_KEY", cfg.aes_key_hex);
+    cJSON_AddBoolToObject(obj, "AES_KEY_SET", cfg.aes_key_hex[0] != 0);
     add_string_or_empty(obj, "ZONE_NAME", cfg.ZONE_NAME);
     add_string_or_empty(obj, "DEVICE_NAME", cfg.DEVICE_NAME);
     add_string_or_empty(obj, "DEVICE_DESC", cfg.DEVICE_DESC);
@@ -489,6 +629,7 @@ static esp_err_t system_apply_from_json(const cJSON *system_obj)
     sync_cfg_from_runtime(&cfg);
 
     (void)json_copy_u32_item(system_obj, "GW_ID", &cfg.GW_ID);
+    (void)json_copy_u16_item(system_obj, "HB_MS", &cfg.HB_MS);
     (void)json_copy_u8_item(system_obj, "ETH_MODE", &cfg.ETH_MODE);
     (void)json_copy_string_item(system_obj, "ETH_IP", cfg.ETH_IP, sizeof(cfg.ETH_IP));
     (void)json_copy_string_item(system_obj, "ETH_MASK", cfg.ETH_MASK, sizeof(cfg.ETH_MASK));
@@ -778,12 +919,11 @@ void udp_config_on_ble_notify(const uint8_t *data, uint16_t len, bool from_cfg)
 static void dwm_refresh_task(void *arg)
 {
     (void)arg;
-    const TickType_t periodic_refresh = pdMS_TO_TICKS(60000);
     const TickType_t hard_cap = pdMS_TO_TICKS(150000);
     const TickType_t idle_gap = pdMS_TO_TICKS(10000);
 
     for (;;) {
-        (void)xSemaphoreTake(s_dwm_refresh_sem, periodic_refresh);
+        (void)xSemaphoreTake(s_dwm_refresh_sem, portMAX_DELAY);
 
         if (!s_dwm_lock) {
             continue;
@@ -1092,7 +1232,22 @@ static esp_err_t handle_udp_request(const char *req, char *resp, size_t resp_sz)
     if (cJSON_IsString(cmd_item) && cmd_item->valuestring) cmd = cmd_item->valuestring;
     if (cJSON_IsString(target_item) && target_item->valuestring) target = target_item->valuestring;
 
-    esp_err_t err;
+    esp_err_t err = validate_udp_auth(root);
+    if (err != ESP_OK) {
+        const char *reason = "invalid_auth";
+        if (err == ESP_ERR_INVALID_ARG) {
+            reason = "auth_required";
+        } else if (err == ESP_ERR_NOT_FOUND) {
+            reason = "auth_not_configured";
+        }
+
+        snprintf(resp, resp_sz,
+                 "{\"ok\":false,\"cmd\":\"%s\",\"target\":\"%s\",\"error\":\"%s\"}",
+                 cmd ? cmd : "", target ? target : "", reason);
+        cJSON_Delete(root);
+        return err;
+    }
+
     if (strcmp(cmd, "ping") == 0) {
         snprintf(resp, resp_sz,
                  "{\"ok\":true,\"cmd\":\"ping\",\"pong\":true,\"listen_port\":%u}",
@@ -1207,12 +1362,27 @@ esp_err_t udp_config_server_start(void)
         }
     }
 
+    restore_telemetry_runtime();
+
+    if (!s_hb_task_handle) {
+        if (xTaskCreate(telemetry_hb_task, "udp_hb", 4096, NULL, 4, &s_hb_task_handle) != pdPASS) {
+            return ESP_ERR_NO_MEM;
+        }
+    }
+
     TaskHandle_t sock_task = NULL;
     if (xTaskCreate(udp_socket_task, "udp_cfg_sock", 9216, NULL, 5, &sock_task) != pdPASS) {
         return ESP_ERR_NO_MEM;
     }
 
     s_udp_task_started = true;
-    dwm_request_refresh(true);
+
+    char auth_buf[128] = {0};
+    if (load_udp_auth_secret(auth_buf, sizeof(auth_buf)) == ESP_OK) {
+        ESP_LOGI(TAG, "UDP auth is required for every request");
+    } else {
+        ESP_LOGW(TAG, "UDP auth secret is not configured yet");
+    }
+
     return ESP_OK;
 }
