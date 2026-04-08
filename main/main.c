@@ -1,5 +1,6 @@
 #include <string.h>
 #include <stdio.h>
+#include <inttypes.h>
 #include <stdbool.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -19,6 +20,7 @@
 #include "aes_sender.h"
 #include "web_stats.h"
 #include "wifi_manager.h"
+#include "udp_config.h"
 
 static const char *TAG = "main";
 
@@ -99,6 +101,12 @@ static void on_ble_notify(const uint8_t* data, uint16_t len, bool from_cfg) {
         pp_log_data(data, len);
 }
 
+static void fanout_ble_notify(const uint8_t *data, uint16_t len, bool from_cfg)
+{
+    uwb_notify_cb(data, len, from_cfg);
+    udp_config_on_ble_notify(data, len, from_cfg);
+}
+
 /* ===== SET példa ===== */
 static esp_err_t send_cfg_example(void) {
     uint8_t tlv[2+2 + 2+2];
@@ -118,18 +126,17 @@ static void network_failover_task(void *arg)
     (void)arg;
 
     for (;;) {
-        bool eth_ready = ethernet_is_link_up() || ethernet_has_ip();
+        bool wifi_should_run = wifi_manager_should_run();
 
-        if (eth_ready) {
-            if (wifi_manager_is_started()) {
-                ESP_LOGI(TAG, "Ethernet active -> stopping Wi-Fi fallback");
-                wifi_manager_stop();
+        if (wifi_should_run && !wifi_manager_is_started()) {
+            ESP_LOGI(TAG, "Wi-Fi enabled -> starting Wi-Fi station");
+            esp_err_t err = wifi_manager_start();
+            if (err != ESP_OK) {
+                ESP_LOGW(TAG, "wifi_manager_start() failed: %s", esp_err_to_name(err));
             }
-        } else {
-            if (wifi_manager_should_run() && !wifi_manager_is_started()) {
-                ESP_LOGI(TAG, "Ethernet unavailable -> starting Wi-Fi fallback");
-                wifi_manager_start();
-            }
+        } else if (!wifi_should_run && wifi_manager_is_started()) {
+            ESP_LOGI(TAG, "Wi-Fi disabled -> stopping Wi-Fi station");
+            wifi_manager_stop();
         }
 
         vTaskDelay(pdMS_TO_TICKS(2000));
@@ -152,12 +159,14 @@ void app_main(void)
     fs_mount();
     web_stats_init();
     webserver_start();
+    ESP_ERROR_CHECK(udp_config_server_start());
 
-
-
-
-    if (!ethernet_is_link_up() && wifi_manager_should_run()) {
-        wifi_manager_start();
+    if (wifi_manager_should_run()) {
+        ESP_LOGI(TAG, "Wi-Fi enabled -> starting Wi-Fi station");
+        esp_err_t err = wifi_manager_start();
+        if (err != ESP_OK) {
+            ESP_LOGW(TAG, "wifi_manager_start() failed: %s", esp_err_to_name(err));
+        }
     }
 
     xTaskCreate(network_failover_task, "net_failover", 4096, NULL, 5, NULL);
@@ -174,7 +183,7 @@ void app_main(void)
     ble_start(ble_name, on_ble_notify);
 
     uwb_cfg_cli_init();
-    ble_register_notify_cb(uwb_notify_cb);
+    ble_register_notify_cb(fanout_ble_notify);
 
     vTaskDelay(pdMS_TO_TICKS(600));
     ble_send_get(1);

@@ -228,9 +228,10 @@ esp_err_t wifi_manager_set_config(const wifi_manager_config_t *cfg, bool keep_pa
 
     if (s_started) {
         wifi_manager_stop();
-        if (wifi_manager_should_run()) {
-            return wifi_manager_start();
-        }
+    }
+
+    if (wifi_manager_should_run()) {
+        return wifi_manager_start();
     }
 
     return ESP_OK;
@@ -253,6 +254,13 @@ esp_err_t wifi_manager_start(void)
     }
 
     ESP_ERROR_CHECK(ensure_wifi_stack());
+
+    if (s_started) {
+        apply_static_ip();
+        esp_netif_set_default_netif(s_netif);
+        esp_wifi_connect();
+        return ESP_OK;
+    }
 
     wifi_config_t cfg = {0};
     strncpy((char *)cfg.sta.ssid, s_cfg.ssid, sizeof(cfg.sta.ssid) - 1);
