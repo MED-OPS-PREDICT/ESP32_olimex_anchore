@@ -798,7 +798,7 @@ static bool parse_tlvs_and_update(const uint8_t *p, uint16_t n)
         switch (t) {
             case 0x01: if (l == 1) { s_dwm_cfg.status = p[0]; s_dwm_cfg.have[H_STATUS] = true; changed = true; } break;
             case 0x02: if (l == 4) { s_dwm_cfg.uptime_ms = rd32be(p); s_dwm_cfg.have[H_UPTIME_MS] = true; changed = true; } break;
-            case 0x03: if (l == 4) { s_dwm_cfg.sync_ms = rd32be(p); s_dwm_cfg.have[H_SYNC_MS] = true; changed = true; } break;
+            case 0x03: if (l == 2) { s_dwm_cfg.sync_ms = rd16be(p); s_dwm_cfg.have[H_SYNC_MS] = true; changed = true; } break;
             case 0x10: if (l == 2) { s_dwm_cfg.network_id = rd16be(p); s_dwm_cfg.have[H_NETWORK_ID] = true; changed = true; } break;
             case 0x11: if (l == 2) { s_dwm_cfg.zone_id = rd16be(p); s_dwm_cfg.have[H_ZONE_ID] = true; changed = true; } break;
             case 0x12: if (l == 4) { s_dwm_cfg.anchor_id = rd32be(p); s_dwm_cfg.have[H_ANCHOR_ID] = true; changed = true; } break;

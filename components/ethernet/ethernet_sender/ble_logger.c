@@ -146,6 +146,7 @@ void uwb_notify_cb(const uint8_t *data, uint16_t len, bool from_cfg)
             g_last_hb_status = status;
             g_last_hb_uptime = uptime;
             g_last_hb_sync   = (uint16_t)sync_ms;
+            web_stats_log_hb(status, uptime, sync_ms);
 
             ESP_LOGI("HB",
                      "HB status=%" PRIu8 " uptime=%" PRIu32 " ms sync_ms=%" PRIu32,
@@ -164,7 +165,7 @@ void uwb_notify_cb(const uint8_t *data, uint16_t len, bool from_cfg)
                      (uint32_t)sync_ms,
                      (unsigned)zone_id);
 
-aes_sender_send_line(line);
+            aes_sender_send_line(line);
             return;
         }
         return;

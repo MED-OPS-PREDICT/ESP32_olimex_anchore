@@ -181,37 +181,16 @@ static void reset_cfg(void)
 
 static uint8_t s_tlv_section = 1;
 
+/*
+ * A régi, fix pozíciós HB parser itt hibás volt: túl rövid minimum hosszal
+ * olvasott a p[16] byte-ig, miközben a jelenlegi HB források nem ezt a fix
+ * bináris layoutot használják. Meghagyjuk no-opként kompatibilitási okból,
+ * de nem frissítünk belőle állapotot.
+ */
 static void try_parse_hb_line(const uint8_t *p, uint16_t n)
 {
-    const uint16_t MIN_HB_LEN = 13;
-    if (!p || n < MIN_HB_LEN) {
-        ESP_LOGW(TAG, "HB packet too short or NULL (len=%u)", (unsigned)n);
-        return;
-    }
-
-    uint8_t  st    = p[2];
-    uint16_t sync  = (uint16_t)p[3]  | ((uint16_t)p[4]  << 8);
-    uint32_t up    = (uint32_t)p[5]  | ((uint32_t)p[6]  << 8)
-                                   | ((uint32_t)p[7]  << 16)
-                                   | ((uint32_t)p[8]  << 24);
-    uint16_t netid = (uint16_t)p[9]  | ((uint16_t)p[10] << 8);
-    uint16_t zone  = (uint16_t)p[11] | ((uint16_t)p[12] << 8);
-    uint32_t aid   = (uint32_t)p[13] | ((uint32_t)p[14] << 8)
-                                   | ((uint32_t)p[15] << 16)
-                                   | ((uint32_t)p[16] << 24);
-
-    s_cfg.status            = (uint8_t)st;
-    s_cfg.have[H_STATUS]    = true;
-    s_cfg.uptime_ms         = up;
-    s_cfg.have[H_UPTIME_MS] = true;
-    s_cfg.sync_ms           = sync;
-    s_cfg.have[H_SYNC_MS]   = true;
-    s_cfg.network_id        = netid;
-    s_cfg.have[H_NETWORK_ID]= true;
-    s_cfg.zone_id           = zone;
-    s_cfg.have[H_ZONE_ID]   = true;
-    s_cfg.anchor_id         = aid;
-    s_cfg.have[H_ANCHOR_ID] = true;
+    (void)p;
+    (void)n;
 }
 
 static bool parse_tlvs_and_update(const uint8_t* p, uint16_t n)
@@ -244,7 +223,7 @@ static bool parse_tlvs_and_update(const uint8_t* p, uint16_t n)
         switch(t){
             case 0x01: if (l==1) { s_cfg.status    = p[0]; s_cfg.have[H_STATUS]=true; changed=true; log_set_u("STATUS", s_cfg.status); } break;
             case 0x02: if (l==4) { s_cfg.uptime_ms = rd32be(p); s_cfg.have[H_UPTIME_MS]=true; changed=true; log_set_u("UPTIME_MS", s_cfg.uptime_ms); } break;
-            case 0x03: if (l==4) { s_cfg.sync_ms   = rd32be(p); s_cfg.have[H_SYNC_MS]=true; changed=true; log_set_u("SYNC_MS", s_cfg.sync_ms); } break;
+            case 0x03: if (l==2) { s_cfg.sync_ms   = rd16be(p); s_cfg.have[H_SYNC_MS]=true; changed=true; log_set_u("SYNC_MS", s_cfg.sync_ms); } break;
             case 0x10: if(l==2){ s_cfg.network_id = rd16be(p); s_cfg.have[H_NETWORK_ID]=true; changed=true; log_set_u("NETWORK_ID", s_cfg.network_id); } break;
             case 0x11: if(l==2){ s_cfg.zone_id    = rd16be(p); s_cfg.have[H_ZONE_ID]=true;    changed=true; log_set_u("ZONE_ID", s_cfg.zone_id); } break;
             case 0x12: if(l==4){ s_cfg.anchor_id  = rd32be(p); s_cfg.have[H_ANCHOR_ID]=true;   changed=true; ESP_LOGI(TAG,"ANCHOR_ID=0x%08" PRIX32, s_cfg.anchor_id); } break;
