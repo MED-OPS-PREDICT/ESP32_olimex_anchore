@@ -15,6 +15,7 @@
 #define WIFI_CFG_NS  "wifi_cfg"
 #define WIFI_CFG_KEY "sta_cfg"
 
+
 static wifi_manager_config_t s_cfg = {
     .enabled = 1,
     .dhcp = 0,
